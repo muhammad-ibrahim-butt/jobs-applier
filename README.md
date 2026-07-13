@@ -1,6 +1,6 @@
 # Jobs Applier
 
-[![CI](https://github.com/Ibrahim8325/jobs-applier/actions/workflows/ci.yml/badge.svg)](https://github.com/Ibrahim8325/jobs-applier/actions/workflows/ci.yml)
+[![CI](https://github.com/muhammad-ibrahim-butt/jobs-applier/actions/workflows/ci.yml/badge.svg)](https://github.com/muhammad-ibrahim-butt/jobs-applier/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -36,7 +36,7 @@ Apify Scraper → Filter → Apply Router
 ### Install
 
 ```bash
-git clone https://github.com/Ibrahim8325/jobs-applier.git
+git clone https://github.com/muhammad-ibrahim-butt/jobs-applier.git
 cd jobs-applier
 uv sync
 uv run playwright install chromium

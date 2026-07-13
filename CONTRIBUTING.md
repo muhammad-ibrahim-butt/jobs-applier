@@ -5,7 +5,7 @@ Thanks for helping improve Jobs Applier.
 ## Setup
 
 ```bash
-git clone https://github.com/Ibrahim8325/jobs-applier.git
+git clone https://github.com/muhammad-ibrahim-butt/jobs-applier.git
 cd jobs-applier
 uv sync --all-extras --dev
 uv run playwright install chromium

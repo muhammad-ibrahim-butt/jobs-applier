@@ -5,7 +5,7 @@ description = "Local job scraper and auto-applier powered by Apify and Playwrigh
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "Muhammad Ibrahim Butt", email = "m.ibrahim8325@gmail.com" },
+    { name = "Muhammad Ibrahim Butt", email = "m.muhammad-ibrahim-butt@gmail.com" },
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -25,10 +25,10 @@ dependencies = [
 jobs-applier = "jobs_applier.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/Ibrahim8325/jobs-applier"
-Repository = "https://github.com/Ibrahim8325/jobs-applier"
-Issues = "https://github.com/Ibrahim8325/jobs-applier/issues"
-Documentation = "https://github.com/Ibrahim8325/jobs-applier/blob/main/docs/SETUP.md"
+Homepage = "https://github.com/muhammad-ibrahim-butt/jobs-applier"
+Repository = "https://github.com/muhammad-ibrahim-butt/jobs-applier"
+Issues = "https://github.com/muhammad-ibrahim-butt/jobs-applier/issues"
+Documentation = "https://github.com/muhammad-ibrahim-butt/jobs-applier/blob/main/docs/SETUP.md"
 
 [project.optional-dependencies]
 dev = [

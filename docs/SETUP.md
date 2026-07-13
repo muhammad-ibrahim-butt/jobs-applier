@@ -10,7 +10,7 @@ Instructions for running Jobs Applier on your machine. For a short overview, see
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-git clone https://github.com/Ibrahim8325/jobs-applier.git
+git clone https://github.com/muhammad-ibrahim-butt/jobs-applier.git
 cd jobs-applier
 uv sync
 uv run playwright install chromium
@@ -20,7 +20,7 @@ uv run playwright install chromium
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/Ibrahim8325/jobs-applier.git
+git clone https://github.com/muhammad-ibrahim-butt/jobs-applier.git
 cd jobs-applier
 uv sync
 uv run playwright install chromium
