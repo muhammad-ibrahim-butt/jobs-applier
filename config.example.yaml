@@ -1,4 +1,4 @@
-# Example search/filter config — tuned for Apify free-tier usage
+# Example search/filter config — multi-source (Apify + local + free APIs)
 # Copy to config.yaml via `jobs-applier init`
 search:
   queries:
@@ -9,12 +9,19 @@ search:
   platforms:
     - linkedin
     - indeed
-  max_results: 15                 # keep low on free Apify (charged per job)
+  max_results: 15
   easy_apply_only: false
   is_remote: true
   hours_old: 48
-  # Costly: turns on extra LinkedIn page fetches. Title scoring works without it.
   fetch_linkedin_descriptions: false
+  # Tried in order when source_mode=fallback (first non-empty wins).
+  # Use merge to combine all (slower / more results).
+  sources:
+    - apify
+    - jobspy
+    - remotive
+    - remoteok
+  source_mode: fallback
 
 filters:
   include_title_keywords:
@@ -31,7 +38,6 @@ filters:
   exclude_companies: []
   remote_only: true
   max_days_old: 2
-  # Keep false unless boards reliably return posted dates (JobSpy: date_posted).
   require_posted_date: false
   min_salary: null
   min_relevance_score: 25
@@ -44,4 +50,4 @@ filters:
 platforms_enabled:
   linkedin: true
   indeed: true
-  glassdoor: false              # Glassdoor often 403s and still burns compute
+  glassdoor: false

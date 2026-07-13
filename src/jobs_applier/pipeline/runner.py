@@ -21,7 +21,8 @@ from jobs_applier.models.job import (
 )
 from jobs_applier.notifications.email import EmailNotifier
 from jobs_applier.profile.qa_cache import QuestionCache
-from jobs_applier.scrapers.apify_client import ApifyJobScraper, ApifyUsageLimitError
+from jobs_applier.scrapers.apify_client import ApifyUsageLimitError
+from jobs_applier.scrapers.multi import MultiSourceScraper
 from jobs_applier.storage.db import init_db
 from jobs_applier.storage.repositories import JobRepository
 
@@ -267,9 +268,9 @@ class PipelineRunner:
         repo.commit()
 
     def _scrape_safe(self) -> list[JobListing]:
-        """Scrape without aborting the pipeline when Apify or a board fails."""
+        """Scrape via multi-source stack; never abort the pipeline on scrape errors."""
         try:
-            return ApifyJobScraper(self._settings, self._app_config).scrape()
+            return MultiSourceScraper(self._settings, self._app_config).scrape()
         except ApifyUsageLimitError as exc:
             logger.error("scrape_aborted_apify_quota", error=str(exc))
             return []

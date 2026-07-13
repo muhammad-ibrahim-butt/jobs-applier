@@ -24,6 +24,9 @@ class SearchConfig(BaseModel):
     hours_old: int = Field(default=168, ge=1, le=720)
     # Costly on Apify (extra LinkedIn page fetches). Title-only relevance works without it.
     fetch_linkedin_descriptions: bool = False
+    # Scrape providers tried in order. fallback = first non-empty wins; merge = combine all.
+    sources: list[str] = Field(default_factory=lambda: ["apify", "jobspy", "remotive", "remoteok"])
+    source_mode: str = Field(default="fallback")  # fallback | merge
 
 
 class FilterConfig(BaseModel):

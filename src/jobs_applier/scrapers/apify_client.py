@@ -82,6 +82,8 @@ def _is_usage_limit_error(exc: BaseException) -> bool:
 class ApifyJobScraper:
     """Scrape jobs via Apify actor — one site at a time so one board's failure is isolated."""
 
+    name = "apify"
+
     def __init__(self, settings: Settings, app_config: AppConfig) -> None:
         self._settings = settings
         self._config = app_config

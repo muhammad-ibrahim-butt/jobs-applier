@@ -32,15 +32,29 @@ uv run playwright install chromium
 2. Settings → Integrations → API tokens
 3. Put the token in `.env` as `APIFY_API_TOKEN`
 
-The default actor charges per result. On the **free Apify plan**, keep usage low:
+The default Apify actor charges per result. On the **free Apify plan**, keep usage low — and use fallbacks so a dead quota does not stop discovery:
 
-- `max_results: 15` (or lower)
-- 2–3 search queries (each × each platform burns compute)
-- `platforms: [linkedin, indeed]` — skip Glassdoor (often 403, still costs)
-- `fetch_linkedin_descriptions: false` (extra LinkedIn page fetches are expensive)
-- `RUN_INTERVAL_MINUTES=180` or higher in `.env` so the daemon does not scrape every hour
+### Scrape sources (in `config.yaml`)
 
-If a run fails with a quota / usage message, wait for the monthly reset or trim the config above.
+```yaml
+search:
+  sources:
+    - apify      # cloud (paid/free credits)
+    - jobspy     # local python-jobspy (LinkedIn/Indeed; no Apify)
+    - remotive   # free Remotive API
+    - remoteok   # free RemoteOK API
+  source_mode: fallback   # first non-empty wins; use "merge" to combine all
+```
+
+Tips when Apify is exhausted:
+
+- Keep `apify` first so it is used when credits remain
+- `jobspy` / `remotive` / `remoteok` run automatically after empty/failed Apify
+- `max_results: 15`, fewer queries, `fetch_linkedin_descriptions: false`
+- `RUN_INTERVAL_MINUTES=180` or higher in `.env`
+- Glassdoor off (`platforms_enabled.glassdoor: false`) — often 403s
+
+If every source fails, the pipeline still tries unapplied jobs from the local SQLite backlog.
 
 ### Email (optional)
 
