@@ -74,3 +74,26 @@ def test_normalize_jobspy_snake_case_fields():
     assert job.posted_at.day == 13
     assert job.apply_url.endswith("/apply")
     assert job.salary_min == 80000
+
+
+def test_normalize_jobspy_date_object_and_amount_fields():
+    from datetime import date
+
+    item = {
+        "site": "indeed",
+        "id": "in-1",
+        "title": "Software Engineer",
+        "company": "Acme",
+        "job_url": "https://indeed.com/viewjob?jk=1",
+        "date_posted": date(2026, 7, 12),
+        "min_amount": 90000.0,
+        "max_amount": 110000.0,
+        "currency": "USD",
+        "is_remote": True,
+    }
+    job = normalize_apify_item(item)
+    assert job is not None
+    assert job.posted_at is not None
+    assert job.posted_at.day == 12
+    assert job.salary_min == 90000
+    assert job.salary_max == 110000

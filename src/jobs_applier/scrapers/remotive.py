@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -28,35 +29,38 @@ class RemotiveScraper:
 
     def scrape(self) -> list[JobListing]:
         search = self._config.search
-        # One API call; client-side filter against queries.
-        url = f"{_REMOTIVE_URL}?category=software-dev&limit={min(search.max_results * 4, 100)}"
-        payload = _get_json(url)
-        jobs_raw = payload.get("jobs") or []
-        queries = [q.lower() for q in search.queries]
+        seen: set[str] = set()
         jobs: list[JobListing] = []
-        for item in jobs_raw:
-            mapped = _map_remotive(item)
-            title = (mapped.get("title") or "").lower()
-            tags = " ".join(str(t).lower() for t in (item.get("tags") or []))
-            blob = f"{title} {tags} {(mapped.get('description') or '')[:500].lower()}"
-            if not _matches_queries(blob, queries):
-                continue
-            job = normalize_apify_item(mapped)
-            if job:
+        # Search terms pull mid-level matches better than one category dump.
+        searches = [_search_term(q) for q in search.queries[:3]] or ["software"]
+        for term in searches:
+            params = urllib.parse.urlencode(
+                {
+                    "category": "software-dev",
+                    "search": term,
+                    "limit": min(search.max_results * 2, 50),
+                }
+            )
+            payload = _get_json(f"{_REMOTIVE_URL}?{params}")
+            for item in payload.get("jobs") or []:
+                mapped = _map_remotive(item)
+                job = normalize_apify_item(mapped)
+                if not job or job.fingerprint in seen:
+                    continue
+                seen.add(job.fingerprint)
                 jobs.append(job)
-            if len(jobs) >= search.max_results:
-                break
-        logger.info("remotive_scrape_complete", count=len(jobs), raw=len(jobs_raw))
+                if len(jobs) >= search.max_results:
+                    logger.info("remotive_scrape_complete", count=len(jobs))
+                    return jobs
+        logger.info("remotive_scrape_complete", count=len(jobs))
         return jobs
 
 
-def _matches_queries(blob: str, queries: list[str]) -> bool:
-    if not queries:
-        return True
-    if any(q in blob for q in queries):
-        return True
-    tokens = {t for q in queries for t in q.split() if len(t) > 3}
-    return bool(tokens) and any(t in blob for t in tokens)
+def _search_term(query: str) -> str:
+    """Turn 'remote software engineer python' into a Remotive search string."""
+    stop = {"remote", "worldwide", "fully", "job", "jobs", "the", "and", "with"}
+    parts = [p for p in query.lower().split() if p not in stop and len(p) > 1]
+    return " ".join(parts[:4]) or query
 
 
 def _map_remotive(item: dict[str, Any]) -> dict[str, Any]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 from jobs_applier.config.profile import AppConfig, ApplicantProfile
@@ -32,6 +33,11 @@ class FilterEngine:
     def _matches_keywords(self, text: str, keywords: list[str]) -> bool:
         text_lower = text.lower()
         return any(kw.lower() in text_lower for kw in keywords)
+
+    def _title_has_keyword(self, title: str, keyword: str) -> bool:
+        """Word-boundary match so 'staff' does not match 'Stafford'."""
+        pattern = r"(?<!\w)" + re.escape(keyword.lower()) + r"(?!\w)"
+        return re.search(pattern, title.lower()) is not None
 
     def _looks_remote(self, job: JobListing) -> bool:
         if job.is_remote:
@@ -66,7 +72,7 @@ class FilterEngine:
             return False, "title missing required keywords"
 
         for kw in self._filters.exclude_title_keywords:
-            if kw.lower() in title:
+            if self._title_has_keyword(job.title, kw):
                 return False, f"excluded title keyword: {kw}"
 
         for kw in self._filters.exclude_description_keywords:

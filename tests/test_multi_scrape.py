@@ -5,7 +5,7 @@ from jobs_applier.config.settings import Settings
 from jobs_applier.models.job import JobListing, JobPlatform
 from jobs_applier.scrapers.multi import MultiSourceScraper
 from jobs_applier.scrapers.remoteok import _map_remoteok
-from jobs_applier.scrapers.remotive import RemotiveScraper, _map_remotive
+from jobs_applier.scrapers.remotive import RemotiveScraper, _map_remotive, _search_term
 
 
 def test_remotive_map_fields():
@@ -23,6 +23,11 @@ def test_remotive_map_fields():
     assert mapped["id"] == "remotive-99"
     assert mapped["is_remote"] is True
     assert mapped["date_posted"] == "2026-07-13"
+
+
+def test_remotive_search_term_strips_noise():
+    assert "remote" not in _search_term("remote software engineer python")
+    assert "python" in _search_term("remote software engineer python")
 
 
 def test_remoteok_map_fields():
@@ -121,11 +126,13 @@ def test_multi_fallback_skips_failed_source(monkeypatch):
     assert len(jobs) == 1
 
 
-def test_remotive_scraper_filters_by_query(monkeypatch):
+def test_remotive_scraper_uses_search_param(monkeypatch):
     config = AppConfig(search=SearchConfig(queries=["python django"], max_results=10))
     scraper = RemotiveScraper(config)
+    urls: list[str] = []
 
-    def fake_get(_url: str):
+    def fake_get(url: str):
+        urls.append(url)
         return {
             "jobs": [
                 {
@@ -138,20 +145,11 @@ def test_remotive_scraper_filters_by_query(monkeypatch):
                     "candidate_required_location": "Remote",
                     "publication_date": "2026-07-01T00:00:00",
                 },
-                {
-                    "id": 2,
-                    "title": "Java Android Engineer",
-                    "company_name": "B",
-                    "url": "https://remotive.com/2",
-                    "description": "kotlin",
-                    "tags": ["java"],
-                    "candidate_required_location": "Remote",
-                    "publication_date": "2026-07-01T00:00:00",
-                },
             ]
         }
 
     monkeypatch.setattr("jobs_applier.scrapers.remotive._get_json", fake_get)
     jobs = scraper.scrape()
     assert len(jobs) == 1
-    assert "Python" in jobs[0].title
+    assert "search=" in urls[0]
+    assert "python" in urls[0]

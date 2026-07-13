@@ -18,20 +18,41 @@ def _parse_platform(value: str | None) -> JobPlatform:
     return JobPlatform.UNKNOWN
 
 
-def _parse_datetime(value: str | None) -> datetime | None:
-    if not value:
+def _parse_datetime(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    # JobSpy returns datetime.date objects — do not call str.replace on them.
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        try:
+            return datetime(int(value.year), int(value.month), int(value.day))
+        except (TypeError, ValueError):
+            return None
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "nat", "none"}:
         return None
     for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
         try:
-            return datetime.strptime(value.replace("+00:00", "Z"), fmt)
+            return datetime.strptime(text.replace("+00:00", "Z"), fmt)
         except ValueError:
             continue
     return None
 
 
 def _extract_salary(item: dict[str, Any]) -> tuple[int | None, int | None, str]:
-    salary_min = item.get("salaryMin") or item.get("minSalary") or item.get("salary_min")
-    salary_max = item.get("salaryMax") or item.get("maxSalary") or item.get("salary_max")
+    salary_min = (
+        item.get("salaryMin")
+        or item.get("minSalary")
+        or item.get("salary_min")
+        or item.get("min_amount")
+    )
+    salary_max = (
+        item.get("salaryMax")
+        or item.get("maxSalary")
+        or item.get("salary_max")
+        or item.get("max_amount")
+    )
     currency = item.get("salaryCurrency") or item.get("currency") or "USD"
 
     if isinstance(item.get("salary"), dict):

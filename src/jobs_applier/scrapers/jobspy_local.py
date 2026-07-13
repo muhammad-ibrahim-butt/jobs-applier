@@ -56,11 +56,11 @@ class JobSpyLocalScraper:
                     site_name=sites,
                     search_term=query,
                     location=search.location or "Remote",
-                    results_wanted=min(search.max_results, 20),
-                    hours_old=search.hours_old,
-                    is_remote=search.is_remote,
+                    results_wanted=int(min(search.max_results, 20)),
+                    hours_old=int(search.hours_old),
+                    is_remote=bool(search.is_remote),
                     country_indeed=country_indeed,
-                    linkedin_fetch_description=search.fetch_linkedin_descriptions,
+                    linkedin_fetch_description=bool(search.fetch_linkedin_descriptions),
                     verbose=0,
                 )
             except Exception as exc:
@@ -69,9 +69,14 @@ class JobSpyLocalScraper:
 
             if frame is None or getattr(frame, "empty", True):
                 continue
-            records = frame.where(frame.notna(), None).to_dict(orient="records")
+            records = frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
             for row in records:
                 cleaned = {k: _clean_cell(v) for k, v in row.items()}
+                # JobSpy salary columns
+                if cleaned.get("min_amount") is not None and cleaned.get("salary_min") is None:
+                    cleaned["salary_min"] = cleaned["min_amount"]
+                if cleaned.get("max_amount") is not None and cleaned.get("salary_max") is None:
+                    cleaned["salary_max"] = cleaned["max_amount"]
                 all_items.append(cleaned)
 
         jobs = normalize_apify_dataset(all_items)

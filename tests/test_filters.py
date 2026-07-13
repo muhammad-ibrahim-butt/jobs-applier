@@ -118,3 +118,13 @@ def test_include_title_keywords():
     engine = FilterEngine(config, _profile())
     ok, _ = engine.passes(_make_job(title="Product Manager"))
     assert ok is False
+
+
+def test_exclude_title_uses_word_boundaries():
+    config = AppConfig(filters=FilterConfig(exclude_title_keywords=["staff"]))
+    engine = FilterEngine(config, _profile())
+    ok_staff, reason = engine.passes(_make_job(title="Staff Software Engineer"))
+    assert ok_staff is False
+    assert "staff" in reason
+    ok_place, _ = engine.passes(_make_job(title="Engineer at Stafford Labs"))
+    assert ok_place is True

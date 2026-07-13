@@ -45,7 +45,7 @@ class EmailNotifier:
             or stats.manual_jobs
             or stats.cap_reached
         )
-        if not interesting and stats.scraped == 0:
+        if not interesting:
             logger.info("email_skipped_empty_run")
             return
 
