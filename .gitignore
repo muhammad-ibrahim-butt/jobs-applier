@@ -1,0 +1,39 @@
+# Environment and secrets
+.env
+*.env.local
+
+# Local data
+data/
+sessions/
+profile.yaml
+config.yaml
+questions.json
+resume.pdf
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright
+playwright-report/
+test-results/

@@ -1,0 +1,36 @@
+# Search and scrape settings
+search:
+  queries:
+    - software engineer
+    - backend developer
+  location: Remote
+  country: USA
+  platforms:
+    - linkedin
+    - indeed
+    - glassdoor
+  max_results: 50
+  easy_apply_only: true
+  hours_old: 168  # last 7 days
+
+# Job filtering rules
+filters:
+  include_title_keywords:
+    - engineer
+    - developer
+  exclude_title_keywords:
+    - intern
+    - senior director
+  exclude_description_keywords:
+    - clearance required
+    - must be US citizen
+  exclude_companies: []
+  remote_only: false
+  max_days_old: 7
+  min_salary: null
+
+# Per-platform toggles
+platforms_enabled:
+  linkedin: true
+  indeed: true
+  glassdoor: true
