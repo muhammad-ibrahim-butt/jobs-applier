@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 
 
 class EmailNotifier:
-    """Send pipeline summary and manual-apply digests via SMTP."""
+    """Send one practical run summary (stats + jobs to apply) via SMTP."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -32,27 +32,46 @@ class EmailNotifier:
         )
 
     def send_run_summary(self, stats: PipelineStats) -> None:
+        """Send a single email for the run. Skips empty no-op runs."""
         if not self.enabled:
             logger.info("email_disabled")
             return
 
-        subject = (
-            f"Jobs Applier: {stats.applied} applied, "
-            f"{stats.emailed} needs your apply, "
-            f"{stats.failed} failed"
+        interesting = (
+            stats.applied
+            or stats.emailed
+            or stats.failed
+            or stats.dry_run
+            or stats.manual_jobs
+            or stats.cap_reached
         )
+        if not interesting and stats.scraped == 0:
+            logger.info("email_skipped_empty_run")
+            return
+
+        if stats.emailed and not stats.applied and not stats.failed:
+            subject = f"Jobs Applier: {stats.emailed} jobs need your apply"
+        else:
+            subject = (
+                f"Jobs Applier: {stats.applied} applied, "
+                f"{stats.emailed} need your apply, "
+                f"{stats.failed} failed"
+            )
         self._send(subject, self._build_summary_html(stats))
 
     def send_manual_apply_digest(self, jobs: list[JobListing]) -> bool:
-        """Email a full digest of jobs that need a manual application."""
+        """Deprecated path: digests are folded into send_run_summary.
+
+        Kept for callers / tests; returns True if jobs were recorded for summary.
+        """
         if not jobs:
             return True
         if not self.enabled:
             logger.warning("manual_digest_skipped_email_disabled", count=len(jobs))
             return False
-
-        subject = f"Jobs Applier: {len(jobs)} remote jobs need your application"
-        return self._send(subject, self._build_manual_digest_html(jobs))
+        # Real email goes out with the run summary so users get one inbox message.
+        logger.info("manual_jobs_queued_for_summary", count=len(jobs))
+        return True
 
     def send_test(self) -> bool:
         """Send a short test message to verify SMTP settings."""
@@ -64,6 +83,15 @@ class EmailNotifier:
             "<p>Your Jobs Applier email configuration works.</p>",
         )
 
+    def _result_label(self, result: object) -> str:
+        title = getattr(result, "job_title", "") or ""
+        company = getattr(result, "job_company", "") or ""
+        if title and company:
+            return f"{title} @ {company}"
+        if title:
+            return title
+        return str(getattr(result, "job_fingerprint", ""))
+
     def _build_summary_html(self, stats: PipelineStats) -> str:
         rows = ""
         for result in stats.results[:30]:
@@ -74,8 +102,9 @@ class EmailNotifier:
                 ApplicationStatus.DRY_RUN: "#3b82f6",
                 ApplicationStatus.EMAILED: "#8b5cf6",
             }.get(result.status, "#6b7280")
+            label = escape(self._result_label(result))
             rows += (
-                f"<tr><td>{escape(result.job_fingerprint)}</td>"
+                f"<tr><td>{label}</td>"
                 f"<td style='color:{status_color}'>{escape(result.status.value)}</td>"
                 f"<td>{escape(result.apply_target.value)}</td>"
                 f"<td>{escape(result.message)}</td></tr>"
@@ -86,36 +115,26 @@ class EmailNotifier:
 
         return f"""
         <html><body style="font-family: sans-serif; max-width: 760px;">
-        <h2>Jobs Applier — Run Summary</h2>
+        <h2>Jobs Applier — What to do next</h2>
+        <p>Open the links below and apply. Auto-applied roles are listed in results.</p>
         <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;">
           <tr><td>Scraped</td><td>{stats.scraped}</td></tr>
           <tr><td>Passed filters</td><td>{stats.filtered}</td></tr>
           <tr><td>Auto-applied</td><td>{stats.applied}</td></tr>
-          <tr><td>Emailed for you</td><td>{stats.emailed}</td></tr>
+          <tr><td>Need your apply</td><td>{stats.emailed}</td></tr>
           <tr><td>Failed</td><td>{stats.failed}</td></tr>
           <tr><td>Skipped</td><td>{stats.skipped}</td></tr>
           <tr><td>Dry run</td><td>{stats.dry_run}</td></tr>
         </table>
         {cap_note}
-        <h3>Jobs needing your application</h3>
-        {manual_html or "<p>None this run.</p>"}
+        <h3>Apply these yourself</h3>
+        {manual_html or "<p>None this run — either auto-applied or nothing matched.</p>"}
         <h3>Application Results</h3>
         <table border="1" cellpadding="6" cellspacing="0"
                style="border-collapse:collapse; width:100%;">
           <tr><th>Job</th><th>Status</th><th>Target</th><th>Message</th></tr>
           {rows or "<tr><td colspan='4'>No applications this run</td></tr>"}
         </table>
-        </body></html>
-        """
-
-    def _build_manual_digest_html(self, jobs: list[JobListing]) -> str:
-        cards = self._job_cards_html(jobs)
-        return f"""
-        <html><body style="font-family: sans-serif; max-width: 760px;">
-        <h2>{len(jobs)} remote jobs — apply manually</h2>
-        <p>These matched your filters but could not be auto-applied
-        (no Easy Apply / Greenhouse / Lever). Open each link and apply yourself.</p>
-        {cards}
         </body></html>
         """
 
@@ -131,12 +150,12 @@ class EmailNotifier:
                 hi = job.salary_max or "?"
                 curr = escape(job.salary_currency)
                 salary = f"<div><strong>Salary:</strong> {lo}-{hi} {curr}</div>"
-            easy = "Yes" if job.is_easy_apply else "No"
+            target = job.apply_target().value.replace("_", " ")
             desc = (job.description or "").strip()
             if len(desc) > 400:
                 desc = desc[:400] + "..."
             loc = escape(job.location or "Remote / not listed")
-            desc_html = escape(desc) or "No description."
+            desc_html = escape(desc) or "No description scraped — open the link for details."
             parts.append(
                 f"""
                 <div style="border:1px solid #e5e7eb;padding:14px;
@@ -144,13 +163,13 @@ class EmailNotifier:
                   <h3 style="margin:0 0 8px;">{escape(job.title)}</h3>
                   <div><strong>Company:</strong> {escape(job.company)}</div>
                   <div><strong>Location:</strong> {loc}</div>
-                  <div><strong>Platform:</strong> {escape(job.platform.value)}</div>
-                  <div><strong>Easy Apply:</strong> {easy}</div>
+                  <div><strong>Found on:</strong> {escape(job.platform.value)}</div>
+                  <div><strong>Apply path:</strong> {escape(target)}</div>
                   {salary}
                   <div style="margin:10px 0;">
                     <a href="{escape(link)}" style="background:#111827;color:#fff;
                     padding:8px 14px;text-decoration:none;border-radius:6px;">
-                    Apply / View job</a>
+                    Open &amp; apply</a>
                   </div>
                   <div style="color:#4b5563;font-size:13px;">{desc_html}</div>
                   <div style="margin-top:8px;font-size:12px;color:#6b7280;">

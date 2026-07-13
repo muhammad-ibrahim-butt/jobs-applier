@@ -28,6 +28,22 @@ from jobs_applier.storage.repositories import JobRepository
 logger = structlog.get_logger(__name__)
 
 
+def _result(
+    job: JobListing,
+    status: ApplicationStatus,
+    apply_target: ApplyTarget,
+    message: str,
+) -> ApplicationResult:
+    return ApplicationResult(
+        job_fingerprint=job.fingerprint,
+        status=status,
+        apply_target=apply_target,
+        message=message,
+        job_title=job.title,
+        job_company=job.company,
+    )
+
+
 class PipelineRunner:
     """Run the full job pipeline."""
 
@@ -117,11 +133,11 @@ class PipelineRunner:
             )
 
             for job in skipped_manual:
-                result = ApplicationResult(
-                    job_fingerprint=job.fingerprint,
-                    status=ApplicationStatus.SKIPPED,
-                    apply_target=ApplyTarget.UNSUPPORTED,
-                    message="Below email relevance / digest cap",
+                result = _result(
+                    job,
+                    ApplicationStatus.SKIPPED,
+                    ApplyTarget.UNSUPPORTED,
+                    "Below email relevance / digest cap",
                 )
                 stats.skipped += 1
                 stats.results.append(result)
@@ -132,16 +148,14 @@ class PipelineRunner:
             if manual_jobs:
                 emailed_ok = self._notifier.send_manual_apply_digest(manual_jobs)
                 for job in manual_jobs:
-                    result = ApplicationResult(
-                        job_fingerprint=job.fingerprint,
-                        status=(
-                            ApplicationStatus.EMAILED if emailed_ok else ApplicationStatus.FAILED
-                        ),
-                        apply_target=ApplyTarget.UNSUPPORTED,
-                        message=(
-                            "Emailed for manual apply (top match)"
+                    result = _result(
+                        job,
+                        ApplicationStatus.EMAILED if emailed_ok else ApplicationStatus.FAILED,
+                        ApplyTarget.UNSUPPORTED,
+                        (
+                            "Queued for manual apply in summary email"
                             if emailed_ok
-                            else "Failed to email manual-apply job"
+                            else "Failed to queue manual-apply job (email disabled?)"
                         ),
                     )
                     if emailed_ok:
@@ -181,12 +195,7 @@ class PipelineRunner:
                         )
                     except Exception as exc:
                         logger.error("apply_exception", job=job.title, error=str(exc))
-                        result = ApplicationResult(
-                            job_fingerprint=job.fingerprint,
-                            status=ApplicationStatus.FAILED,
-                            apply_target=target,
-                            message=str(exc),
-                        )
+                        result = _result(job, ApplicationStatus.FAILED, target, str(exc))
 
                     if result.status == ApplicationStatus.APPLIED:
                         stats.applied += 1
@@ -210,19 +219,14 @@ class PipelineRunner:
                 for job in fallback_manual:
                     if job in to_email and emailed_ok:
                         status = ApplicationStatus.EMAILED
-                        message = "Auto-apply skipped; emailed for manual apply"
+                        message = "Auto-apply skipped; included in summary email"
                         stats.emailed += 1
                         stats.manual_jobs.append(job)
                     else:
                         status = ApplicationStatus.SKIPPED
                         message = "Auto-apply skipped"
                         stats.skipped += 1
-                    result = ApplicationResult(
-                        job_fingerprint=job.fingerprint,
-                        status=status,
-                        apply_target=self._router.get_target(job),
-                        message=message,
-                    )
+                    result = _result(job, status, self._router.get_target(job), message)
                     stats.results.append(result)
                     repo.save_application(result)
                 repo.commit()

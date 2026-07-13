@@ -4,16 +4,16 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Local-first job scraper and auto-applier. Scrapes **LinkedIn, Indeed, and Glassdoor** via [Apify](https://apify.com), filters for remote matches, auto-applies where reliable (LinkedIn Easy Apply, Greenhouse, Lever), and **emails you** full job cards when automatic apply is not possible.
+Local-first job scraper and auto-applier. Scrapes **LinkedIn and Indeed** via [Apify](https://apify.com) (Glassdoor optional), filters for remote matches, auto-applies where reliable (LinkedIn Easy Apply, Greenhouse, Lever, Ashby), and **emails you** one clear summary with job cards when you must apply yourself.
 
 Your credentials, resume, and browser session stay on your machine.
 
 ## Features
 
-- Multi-board scraping via Apify (configurable boards)
-- Config-driven filters (remote-only, keywords, blocklists, recency)
-- Auto-apply adapters: LinkedIn Easy Apply, Greenhouse, Lever
-- Manual-apply email digests (title, company, location, salary, link, snippet)
+- Multi-board scraping via Apify (free-tier friendly defaults)
+- Config-driven filters (remote-only, keywords, blocklists, relevance, recency)
+- Auto-apply adapters: LinkedIn Easy Apply, Greenhouse, Lever, Ashby
+- One practical email per run (what applied + links you still need to open)
 - Daily apply cap, dry-run mode, SQLite history
 - SMTP notifications (Gmail, Namecheap/cPanel, etc.)
 - Daemon / scheduled runs while your PC is on
@@ -23,8 +23,8 @@ Your credentials, resume, and browser session stay on your machine.
 ```
 Apify Scraper → Filter → Apply Router
                             ├── LinkedIn Easy Apply
-                            ├── Greenhouse / Lever
-                            └── Email digest (manual apply)
+                            ├── Greenhouse / Lever / Ashby
+                            └── Email summary (manual apply)
                                       ↓
                                SQLite + SMTP
 ```
