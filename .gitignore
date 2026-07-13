@@ -1,15 +1,21 @@
 # Environment and secrets
 .env
+.env.*
+!.env.example
 *.env.local
+
+# Local configs (user copies of examples)
+profile.yaml
+config.yaml
 
 # Local data
 data/
 sessions/
-profile.yaml
-config.yaml
 questions.json
 resume.pdf
 *.pdf
+*.db
+*.bak
 
 # Python
 __pycache__/

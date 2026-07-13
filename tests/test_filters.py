@@ -20,6 +20,7 @@ def _make_job(**kwargs) -> JobListing:
         "title": "Software Engineer",
         "company": "Acme",
         "description": "Python and AWS experience required",
+        "location": "Remote",
         "is_easy_apply": True,
         "is_remote": True,
         "posted_at": datetime.utcnow(),
@@ -55,11 +56,32 @@ def test_rejects_excluded_title_keyword():
     assert "intern" in reason
 
 
-def test_rejects_non_easy_apply_when_required():
-    config = AppConfig(search=SearchConfig(easy_apply_only=True))
+def test_keeps_non_easy_apply_for_manual_email():
+    """Non-Easy-Apply jobs must pass filters so they can be emailed."""
+    config = AppConfig(
+        search=SearchConfig(easy_apply_only=False),
+        filters=FilterConfig(remote_only=True),
+    )
     engine = FilterEngine(config, _profile())
-    ok, _ = engine.passes(_make_job(is_easy_apply=False))
+    ok, reason = engine.passes(
+        _make_job(is_easy_apply=False, apply_url="https://company.com/jobs/1")
+    )
+    assert ok is True
+    assert reason == "passed"
+
+
+def test_rejects_onsite_when_remote_only():
+    config = AppConfig(filters=FilterConfig(remote_only=True))
+    engine = FilterEngine(config, _profile())
+    ok, reason = engine.passes(
+        _make_job(
+            is_remote=False,
+            location="New York, NY (On-site)",
+            description="Must work from HQ",
+        )
+    )
     assert ok is False
+    assert reason == "not remote"
 
 
 def test_rejects_old_jobs():

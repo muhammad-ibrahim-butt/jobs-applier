@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     notify_email: str = ""
     email_enabled: bool = False
+    # Auto True when port is 465; override with SMTP_USE_SSL=true/false
+    smtp_use_ssl: bool | None = None
+
+    @field_validator("smtp_password", mode="before")
+    @classmethod
+    def strip_password_quotes(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().strip('"').strip("'")
+        return value
 
     # Paths
     profile_path: Path = Path("./profile.yaml")
@@ -65,6 +74,11 @@ class Settings(BaseSettings):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.browser_user_data_dir.mkdir(parents=True, exist_ok=True)
         self.questions_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def resolve_smtp_use_ssl(self) -> bool:
+        if self.smtp_use_ssl is not None:
+            return self.smtp_use_ssl
+        return self.smtp_port == 465
 
 
 def get_settings() -> Settings:

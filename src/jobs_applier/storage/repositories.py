@@ -27,7 +27,11 @@ class JobRepository:
             .filter(ApplicationRecord.job_fingerprint == fingerprint)
             .filter(
                 ApplicationRecord.status.in_(
-                    [ApplicationStatus.APPLIED.value, ApplicationStatus.DRY_RUN.value]
+                    [
+                        ApplicationStatus.APPLIED.value,
+                        ApplicationStatus.DRY_RUN.value,
+                        ApplicationStatus.EMAILED.value,
+                    ]
                 )
             )
             .first()
@@ -73,13 +77,17 @@ class JobRepository:
         )
 
     def count_applications_today(self) -> int:
+        """Count submitted (or dry-run) applications today toward the daily cap."""
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         return (
             self._session.query(ApplicationRecord)
             .filter(ApplicationRecord.applied_at >= today_start)
             .filter(
                 ApplicationRecord.status.in_(
-                    [ApplicationStatus.APPLIED.value, ApplicationStatus.DRY_RUN.value]
+                    [
+                        ApplicationStatus.APPLIED.value,
+                        ApplicationStatus.DRY_RUN.value,
+                    ]
                 )
             )
             .count()

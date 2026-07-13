@@ -29,6 +29,7 @@ class ApplicationStatus(StrEnum):
     SKIPPED = "skipped"
     FAILED = "failed"
     DRY_RUN = "dry_run"
+    EMAILED = "emailed"  # sent to user for manual apply
 
 
 class JobListing(BaseModel):
@@ -86,6 +87,8 @@ class PipelineStats(BaseModel):
     skipped: int = 0
     failed: int = 0
     dry_run: int = 0
+    emailed: int = 0
     cap_reached: bool = False
     results: list[ApplicationResult] = Field(default_factory=list)
     new_jobs: list[JobListing] = Field(default_factory=list)
+    manual_jobs: list[JobListing] = Field(default_factory=list)

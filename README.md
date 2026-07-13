@@ -1,149 +1,135 @@
 # Jobs Applier
 
 [![CI](https://github.com/Ibrahim8325/jobs-applier/actions/workflows/ci.yml/badge.svg)](https://github.com/Ibrahim8325/jobs-applier/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A local-first job scraping and auto-application service. Scrapes listings from **LinkedIn, Indeed, and Glassdoor** via [Apify](https://apify.com), filters matches against your criteria, and auto-applies through **Playwright** — with email summaries after each run.
+Local-first job scraper and auto-applier. Scrapes **LinkedIn, Indeed, and Glassdoor** via [Apify](https://apify.com), filters for remote matches, auto-applies where reliable (LinkedIn Easy Apply, Greenhouse, Lever), and **emails you** full job cards when automatic apply is not possible.
 
-Built for developers who want to automate repetitive job applications while keeping full control of their data, credentials, and apply limits.
+Your credentials, resume, and browser session stay on your machine.
 
 ## Features
 
-- **Multi-board scraping** — LinkedIn, Indeed, and Glassdoor in a single Apify run
-- **Smart filtering** — keyword include/exclude, remote-only, salary floor, recency, company blocklists
-- **Auto-apply adapters** — LinkedIn Easy Apply, Greenhouse, and Lever
-- **Daily apply cap** — prevents over-application and account risk
-- **Email notifications** — HTML summary after each pipeline run
-- **Persistent browser session** — log in once, session saved locally
-- **Q&A cache** — remembers answers to recurring screening questions
-- **Dry-run mode** — fill forms without submitting
-- **Local daemon** — runs on a schedule while your machine is on
+- Multi-board scraping via Apify (configurable boards)
+- Config-driven filters (remote-only, keywords, blocklists, recency)
+- Auto-apply adapters: LinkedIn Easy Apply, Greenhouse, Lever
+- Manual-apply email digests (title, company, location, salary, link, snippet)
+- Daily apply cap, dry-run mode, SQLite history
+- SMTP notifications (Gmail, Namecheap/cPanel, etc.)
+- Daemon / scheduled runs while your PC is on
 
 ## Architecture
 
 ```
-Apify Scraper → Normalizer → Filter Engine → Apply Router
-                                                  ├── LinkedIn Easy Apply
-                                                  ├── Greenhouse
-                                                  ├── Lever
-                                                  └── Skip (unsupported)
-                              ↓
-                         SQLite + Email
+Apify Scraper → Filter → Apply Router
+                            ├── LinkedIn Easy Apply
+                            ├── Greenhouse / Lever
+                            └── Email digest (manual apply)
+                                      ↓
+                               SQLite + SMTP
 ```
 
-## Quick Start
+## Quick start
 
-### Prerequisites
-
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-- [Apify](https://apify.com) account and API token
-- Chromium (installed via Playwright)
+**Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/), [Apify](https://apify.com) token, Chromium via Playwright.
 
 ### Install
 
-```powershell
+```bash
 git clone https://github.com/Ibrahim8325/jobs-applier.git
 cd jobs-applier
 uv sync
 uv run playwright install chromium
 ```
 
+Windows (PowerShell) is the same once `uv` is installed.
+
+Run all commands from the **repository root** (config paths are relative to the current working directory).
+
 ### Configure
 
-```powershell
+```bash
 uv run jobs-applier init
 ```
 
-Edit the generated files:
-
 | File | Purpose |
 |------|---------|
-| `.env` | Apify token, SMTP credentials, paths, daily cap |
-| `profile.yaml` | Your name, email, phone, work auth, default answers |
-| `config.yaml` | Search queries, platforms, filter rules |
-| `resume.pdf` | Your resume (path set in `.env`) |
+| `.env` | Apify token, SMTP (optional), caps, paths |
+| `profile.yaml` | Your applicant details and default answers |
+| `config.yaml` | Search queries, platforms, filters |
+| `resume.pdf` | Resume path from `RESUME_PATH` |
 
-**Required `.env` values:**
+Minimal `.env`:
 
 ```env
 APIFY_API_TOKEN=your_apify_token
-SMTP_USER=your@gmail.com
-SMTP_PASSWORD=your_app_password
-NOTIFY_EMAIL=your@gmail.com
-EMAIL_ENABLED=true
+EMAIL_ENABLED=false
 ```
 
-### LinkedIn Login (one time)
+To enable email digests / run summaries:
 
-```powershell
+```env
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your_app_password
+NOTIFY_EMAIL=you@gmail.com
+```
+
+Use port **465** + `SMTP_USE_SSL=true` for hosts that require SSL (e.g. many cPanel providers).
+
+See [docs/SETUP.md](docs/SETUP.md) for Windows Task Scheduler, SMTP details, and troubleshooting.
+
+### Login once (LinkedIn)
+
+```bash
 uv run jobs-applier login linkedin
 ```
 
-A browser window opens — log in manually, then press Enter in the terminal. Your session is saved to `./sessions/chromium`.
+Complete any checkpoint/CAPTCHA in the browser, wait for your feed, then press Enter.
 
-### First Run (dry run)
+### Dry run, then live
 
-```powershell
-uv run jobs-applier run --dry-run
+```bash
+uv run jobs-applier test-email          # optional SMTP check
+uv run jobs-applier run --dry-run       # fill forms, do not submit
+uv run jobs-applier run                 # apply + email digests
+uv run jobs-applier daemon              # repeat every RUN_INTERVAL_MINUTES
+uv run jobs-applier status
 ```
 
-### Production Run
-
-```powershell
-uv run jobs-applier run
-```
-
-### Daemon Mode
-
-```powershell
-uv run jobs-applier daemon
-```
-
-Runs the pipeline every `RUN_INTERVAL_MINUTES` (default: 120) while the process is alive.
-
-## CLI Reference
+## CLI
 
 | Command | Description |
 |---------|-------------|
-| `jobs-applier init` | Create config files and data directories |
-| `jobs-applier login linkedin` | Interactive LinkedIn session bootstrap |
-| `jobs-applier scrape` | Scrape and filter only (no apply) |
-| `jobs-applier run` | Full pipeline: scrape → filter → apply → email |
-| `jobs-applier run --dry-run` | Fill forms without submitting |
+| `jobs-applier init` | Create config files and data dirs |
+| `jobs-applier login linkedin` | Save LinkedIn browser session |
+| `jobs-applier scrape` | Scrape + filter only |
+| `jobs-applier run` | Full pipeline |
+| `jobs-applier run --dry-run` | No form submit |
+| `jobs-applier test-email` | Verify SMTP |
 | `jobs-applier daemon` | Scheduled loop |
-| `jobs-applier status` | Today's apply count and recent history |
+| `jobs-applier status` | Today's applies + history |
 
-## Configuration Reference
+## Configuration
 
-See [`.env.example`](.env.example), [`config.example.yaml`](config.example.yaml), and [`profile.example.yaml`](profile.example.yaml) for all options.
-
-Key settings:
+Examples: [`.env.example`](.env.example), [`config.example.yaml`](config.example.yaml), [`profile.example.yaml`](profile.example.yaml).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DAILY_APPLY_CAP` | 25 | Max applications per day |
+| `DAILY_APPLY_CAP` | 25 | Max auto-apply attempts per day |
 | `RUN_INTERVAL_MINUTES` | 120 | Daemon interval |
-| `DRY_RUN` | false | Global dry-run toggle |
-| `APIFY_ACTOR_ID` | openclawai/job-board-scraper | Apify actor to use |
+| `DRY_RUN` | false | Global dry-run |
+| `APIFY_ACTOR_ID` | openclawai/job-board-scraper | Scraper actor |
 
-## Project Structure
+**Costs:** Apify charges per scraped result. Keep `max_results` low while testing.
 
-```
-src/jobs_applier/
-├── cli.py              # Typer CLI
-├── config/             # Settings + YAML loaders
-├── scrapers/           # Apify client + normalizer
-├── filters/            # Filter engine
-├── apply/              # Playwright adapters
-├── pipeline/           # Orchestrator
-├── storage/            # SQLite repositories
-├── notifications/      # Email
-└── scheduler/          # Daemon
-```
+**Never commit** `.env`, `profile.yaml`, `sessions/`, `data/`, or resumes. See [SECURITY.md](SECURITY.md).
 
 ## Development
 
-```powershell
+```bash
 uv sync --all-extras --dev
 uv run ruff check src tests
 uv run ruff format src tests
@@ -151,24 +137,25 @@ uv run mypy src/jobs_applier
 uv run pytest -v
 ```
 
-## Ethics & Disclaimer
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-This tool is intended for **personal use only**. Automated job applications may violate platform Terms of Service. Use responsibly:
+## Ethics & disclaimer
 
-- Set reasonable daily apply caps
-- Only apply to jobs you're genuinely qualified for
-- Review your profile and resume before enabling auto-apply
-- Respect rate limits and platform policies
+Personal use only. Automated applications may violate job-board Terms of Service. You are responsible for:
 
-The authors are not responsible for any account restrictions or consequences resulting from use of this tool.
+- Reasonable daily caps
+- Applying only to roles you are qualified for
+- Reviewing profile/resume before live runs
+- Compliance with local laws and platform rules
+
+Authors are not liable for account restrictions or other consequences.
 
 ## Roadmap
 
 - [ ] Workday / iCIMS adapters
 - [ ] Optional LLM for unknown screening questions
-- [ ] Cover letter generation per job
-- [ ] Local web dashboard
-- [ ] Apify webhook trigger mode
+- [ ] Cover letter generation
+- [ ] Local dashboard
 
 ## License
 

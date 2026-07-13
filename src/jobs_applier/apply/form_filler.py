@@ -95,15 +95,15 @@ class FormFiller:
         if not self._resume_path.exists():
             logger.warning("resume_not_found", path=str(self._resume_path))
             return False
+        # File inputs are often hidden; try every input[type=file] on the page.
         file_inputs = self._page.locator("input[type='file']").all()
         for fi in file_inputs:
-            if fi.is_visible() or True:
-                try:
-                    fi.set_input_files(str(self._resume_path.resolve()))
-                    human_delay(500, 1200)
-                    return True
-                except Exception:
-                    continue
+            try:
+                fi.set_input_files(str(self._resume_path.resolve()))
+                human_delay(500, 1200)
+                return True
+            except Exception:
+                continue
         return False
 
     def _find_label(self, element: Locator) -> str:

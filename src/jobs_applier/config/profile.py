@@ -12,10 +12,14 @@ from pydantic import BaseModel, Field
 class SearchConfig(BaseModel):
     queries: list[str] = Field(default_factory=lambda: ["software engineer"])
     location: str = "Remote"
-    country: str = "USA"
+    # Empty / "worldwide" = any country (omit country from Apify for LinkedIn)
+    country: str = "worldwide"
     platforms: list[str] = Field(default_factory=lambda: ["linkedin", "indeed", "glassdoor"])
     max_results: int = Field(default=50, ge=1, le=500)
-    easy_apply_only: bool = True
+    # If true, Apify prefers Easy Apply listings. Non-easy-apply matches are still kept
+    # and emailed for manual apply when auto-apply adapters cannot handle them.
+    easy_apply_only: bool = False
+    is_remote: bool = True
     hours_old: int = Field(default=168, ge=1, le=720)
 
 

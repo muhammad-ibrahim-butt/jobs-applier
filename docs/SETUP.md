@@ -1,143 +1,141 @@
 # Setup Guide
 
-Detailed setup instructions for Windows.
+Instructions for running Jobs Applier on your machine. For a short overview, see the [README](../README.md).
 
-## 1. Install Prerequisites
+## 1. Install prerequisites
 
 ### Python and uv
 
-```powershell
-# Install uv (if not installed)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+**Windows (PowerShell):**
 
-# Clone and install
-cd C:\Projects\jobs-applier
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+git clone https://github.com/Ibrahim8325/jobs-applier.git
+cd jobs-applier
 uv sync
 uv run playwright install chromium
 ```
 
-### Apify Account
+**macOS / Linux:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone https://github.com/Ibrahim8325/jobs-applier.git
+cd jobs-applier
+uv sync
+uv run playwright install chromium
+```
+
+### Apify account
 
 1. Sign up at [apify.com](https://apify.com)
-2. Go to **Settings → Integrations → API tokens**
-3. Copy your token to `.env` as `APIFY_API_TOKEN`
+2. Settings → Integrations → API tokens
+3. Put the token in `.env` as `APIFY_API_TOKEN`
 
-The default actor (`openclawai/job-board-scraper`) charges per result. Start with `max_results: 25` in `config.yaml` to control costs.
+The default actor charges per result. Start with a low `max_results` in `config.yaml`.
 
-### Gmail SMTP (App Password)
+### Email (optional)
 
-1. Enable 2FA on your Google account
-2. Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
-3. Generate a password for "Mail"
-4. Set in `.env`:
+**Gmail (port 587 + STARTTLS):**
+
+1. Enable 2FA
+2. Create an [App Password](https://myaccount.google.com/apppasswords)
+3. Set:
 
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=your@gmail.com
-SMTP_PASSWORD=your_16_char_app_password
-NOTIFY_EMAIL=your@gmail.com
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your_app_password
+NOTIFY_EMAIL=you@gmail.com
 EMAIL_ENABLED=true
 ```
 
-## 2. Initialize Configuration
+**cPanel / Namecheap-style hosts (port 465 + SSL):**
 
-```powershell
+```env
+SMTP_HOST=mail.yourdomain.com
+SMTP_PORT=465
+SMTP_USE_SSL=true
+SMTP_USER=you@yourdomain.com
+SMTP_PASSWORD=your_mailbox_password
+NOTIFY_EMAIL=you@gmail.com
+EMAIL_ENABLED=true
+```
+
+Verify with:
+
+```bash
+uv run jobs-applier test-email
+```
+
+## 2. Initialize configuration
+
+```bash
 uv run jobs-applier init
 ```
 
-Edit these files with your real data:
+Edit `.env`, `profile.yaml`, `config.yaml`, and place your resume at `RESUME_PATH`.
 
-- **`profile.yaml`** — name, email, phone, work authorization, screening question defaults
-- **`config.yaml`** — search queries, location, filter rules
-- **`.env`** — secrets and paths
-- **`resume.pdf`** — place your resume in the project root (or update `RESUME_PATH`)
+## 3. LinkedIn session
 
-## 3. LinkedIn Session
-
-```powershell
+```bash
 uv run jobs-applier login linkedin
 ```
 
-1. A Chromium window opens to LinkedIn login
-2. Log in with your credentials
-3. Once you see your feed, return to the terminal and press **Enter**
-4. Session is saved to `./sessions/chromium` (gitignored)
+1. Log in in the Chromium window (complete CAPTCHA/checkpoint if shown)
+2. Wait until you see your feed
+3. Press Enter in the terminal
 
-You only need to do this once unless the session expires.
+Session files live in `./sessions/chromium` (gitignored).
 
-## 4. Test with Dry Run
+## 4. Dry run, then live
 
-```powershell
+```bash
 uv run jobs-applier run --dry-run
-```
-
-This will:
-- Scrape jobs via Apify
-- Filter against your rules
-- Open Easy Apply forms and fill them
-- **Not** click Submit
-
-Check the terminal output and `jobs-applier status` for results.
-
-## 5. Production Run
-
-```powershell
+uv run jobs-applier status
 uv run jobs-applier run
 ```
 
-## 6. Run as Daemon
+## 5. Keep it running
 
-### Option A: Long-running process
+### Daemon (cross-platform)
 
-```powershell
+```bash
 uv run jobs-applier daemon
 ```
 
-Keep this terminal open (or run in background). Pipeline runs every `RUN_INTERVAL_MINUTES`.
+Repeats every `RUN_INTERVAL_MINUTES`.
 
-### Option B: Windows Task Scheduler
-
-Run the helper script as Administrator:
+### Windows Task Scheduler
 
 ```powershell
 .\scripts\install-task.ps1
 ```
 
-This registers a task that runs `uv run jobs-applier run` every 2 hours while you're logged in.
+### macOS / Linux cron (example: every 2 hours)
 
-To start at login instead, open Task Scheduler and change the trigger to **At log on**.
-
-## 7. Monitoring
-
-```powershell
-# Check today's apply count and recent history
-uv run jobs-applier status
-
-# Scrape only (no apply) to preview matches
-uv run jobs-applier scrape
+```cron
+0 */2 * * * cd /path/to/jobs-applier && /path/to/uv run jobs-applier run >> /tmp/jobs-applier.log 2>&1
 ```
-
-Email summaries are sent after each `run` or daemon cycle if `EMAIL_ENABLED=true`.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | `APIFY_API_TOKEN is required` | Set token in `.env` |
-| `Config file not found` | Run `jobs-applier init` |
-| LinkedIn login fails | Delete `./sessions/chromium` and run `login linkedin` again |
-| Easy Apply button not found | Job may not be Easy Apply; check `easy_apply_only` in config |
-| Email not sending | Verify SMTP credentials; test with `EMAIL_ENABLED=true` |
-| Daily cap reached | Wait until next day or increase `DAILY_APPLY_CAP` |
-| Unknown form questions | Add answers to `profile.yaml` defaults; they auto-cache in `data/questions.json` |
+| Config file not found | Run `jobs-applier init` from repo root |
+| LinkedIn login / checkpoint | Delete `sessions/chromium` and login again; finish CAPTCHA before Enter |
+| Email connection closed on 465 | Use `SMTP_USE_SSL=true` (or port 587 + STARTTLS) |
+| Filtered 0 jobs | Check `remote_only`, keywords, and whether LinkedIn scrape succeeded |
+| Daily cap reached | Wait or raise `DAILY_APPLY_CAP` |
 
-## Data Locations
+## Data locations
 
 | Path | Contents |
 |------|----------|
 | `./data/applications.db` | Job and application history |
 | `./data/questions.json` | Cached form answers |
-| `./sessions/chromium` | Browser session (LinkedIn cookies) |
-| `./profile.yaml` | Your applicant profile (gitignored) |
+| `./sessions/chromium` | Browser profile (sensitive) |
+| `./profile.yaml` | Applicant profile (gitignored) |
 | `./.env` | Secrets (gitignored) |
