@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from apify_client import ApifyClient
+from apify_client.errors import ApifyApiError
 
 from jobs_applier.config.profile import AppConfig
 from jobs_applier.config.settings import Settings
@@ -26,6 +27,23 @@ _COUNTRY_ALIASES: dict[str, str] = {
 
 _WORLDWIDE = {"", "worldwide", "world", "global", "any", "anywhere"}
 
+_USAGE_NEEDLES = (
+    "quota",
+    "limit",
+    "usage",
+    "insufficient",
+    "payment required",
+    "monthly usage",
+    "memory limit",
+    "out of memory",
+    "not enough",
+    "credit",
+)
+
+
+class ApifyUsageLimitError(RuntimeError):
+    """Apify free-tier / paid usage limit was hit."""
+
 
 def _normalize_country(raw: str) -> str | None:
     key = raw.strip().lower()
@@ -43,6 +61,14 @@ def _dataset_id_from_run(run: Any) -> str:
         if value:
             return str(value)
     return ""
+
+
+def _is_usage_limit_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "statusCode", None)
+    if status in (402, 429):
+        return True
+    text = str(exc).lower()
+    return any(needle in text for needle in _USAGE_NEEDLES)
 
 
 class ApifyJobScraper:
@@ -71,8 +97,8 @@ class ApifyJobScraper:
             "maxResults": search.max_results,
             "isRemote": search.is_remote,
             "hoursOld": search.hours_old,
-            # Empty LinkedIn descriptions make relevance scoring useless.
-            "linkedinFetchDescription": True,
+            # Default off: free tiers burn CU fetching every LinkedIn description.
+            "linkedinFetchDescription": search.fetch_linkedin_descriptions,
         }
         if country:
             actor_input["country"] = country
@@ -88,7 +114,25 @@ class ApifyJobScraper:
         actor_id = self._settings.apify_actor_id
 
         logger.info("starting_apify_run", actor_id=actor_id, input=actor_input)
-        run = self._client.actor(actor_id).call(run_input=actor_input)
+        try:
+            run = self._client.actor(actor_id).call(run_input=actor_input)
+        except ApifyApiError as exc:
+            if _is_usage_limit_error(exc):
+                raise ApifyUsageLimitError(
+                    "Apify usage/quota limit hit (common on free tiers). "
+                    "Lower max_results, fewer queries/platforms, disable "
+                    "fetch_linkedin_descriptions, or raise RUN_INTERVAL_MINUTES. "
+                    f"Original: {exc}"
+                ) from exc
+            raise
+        except Exception as exc:
+            if _is_usage_limit_error(exc):
+                raise ApifyUsageLimitError(
+                    "Apify usage/quota limit hit (common on free tiers). "
+                    f"Original: {exc}"
+                ) from exc
+            raise
+
         if run is None:
             raise RuntimeError(f"Apify actor run failed: {actor_id}")
         dataset_id = _dataset_id_from_run(run)

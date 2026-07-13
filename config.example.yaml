@@ -1,18 +1,20 @@
-# Example search/filter config — copy to config.yaml via `jobs-applier init`
+# Example search/filter config — tuned for Apify free-tier usage
+# Copy to config.yaml via `jobs-applier init`
 search:
   queries:
-    - remote software engineer
-    - remote backend engineer
+    - remote software engineer python
+    - remote backend engineer laravel
   location: Remote
   country: worldwide
   platforms:
     - linkedin
     - indeed
-    - glassdoor
-  max_results: 30
+  max_results: 15                 # keep low on free Apify (charged per job)
   easy_apply_only: false
   is_remote: true
   hours_old: 48
+  # Costly: turns on extra LinkedIn page fetches. Title scoring works without it.
+  fetch_linkedin_descriptions: false
 
 filters:
   include_title_keywords:
@@ -42,4 +44,4 @@ filters:
 platforms_enabled:
   linkedin: true
   indeed: true
-  glassdoor: true
+  glassdoor: false              # Glassdoor often 403s and still burns compute

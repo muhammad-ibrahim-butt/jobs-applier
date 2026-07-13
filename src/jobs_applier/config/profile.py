@@ -14,13 +14,16 @@ class SearchConfig(BaseModel):
     location: str = "Remote"
     # Empty / "worldwide" = any country (omit country from Apify for LinkedIn)
     country: str = "worldwide"
-    platforms: list[str] = Field(default_factory=lambda: ["linkedin", "indeed", "glassdoor"])
-    max_results: int = Field(default=50, ge=1, le=500)
+    # Prefer linkedin+indeed on free Apify tiers — Glassdoor often 403s and still burns CU.
+    platforms: list[str] = Field(default_factory=lambda: ["linkedin", "indeed"])
+    max_results: int = Field(default=20, ge=1, le=500)
     # If true, Apify prefers Easy Apply listings. Non-easy-apply matches are still kept
     # and emailed for manual apply when auto-apply adapters cannot handle them.
     easy_apply_only: bool = False
     is_remote: bool = True
     hours_old: int = Field(default=168, ge=1, le=720)
+    # Costly on Apify (extra LinkedIn page fetches). Title-only relevance works without it.
+    fetch_linkedin_descriptions: bool = False
 
 
 class FilterConfig(BaseModel):
@@ -43,7 +46,7 @@ class FilterConfig(BaseModel):
 class PlatformsEnabled(BaseModel):
     linkedin: bool = True
     indeed: bool = True
-    glassdoor: bool = True
+    glassdoor: bool = False
 
 
 class AppConfig(BaseModel):

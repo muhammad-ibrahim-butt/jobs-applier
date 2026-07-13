@@ -12,6 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from jobs_applier.config.settings import get_settings
 from jobs_applier.logging_config import configure_logging
 from jobs_applier.pipeline.runner import PipelineRunner
+from jobs_applier.scrapers.apify_client import ApifyUsageLimitError
 
 logger = structlog.get_logger(__name__)
 
@@ -28,6 +29,12 @@ def run_daemon() -> None:
         logger.info("daemon_run_start")
         try:
             runner.run()
+        except ApifyUsageLimitError as exc:
+            logger.error(
+                "daemon_apify_quota",
+                error=str(exc),
+                tip="Reduce scrape volume or wait for Apify quota reset",
+            )
         except Exception as exc:
             logger.error("daemon_run_failed", error=str(exc))
 

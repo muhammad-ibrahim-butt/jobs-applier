@@ -1,6 +1,11 @@
 """Tests for Apify client helpers."""
 
-from jobs_applier.scrapers.apify_client import _dataset_id_from_run, _normalize_country
+from jobs_applier.scrapers.apify_client import (
+    ApifyUsageLimitError,
+    _dataset_id_from_run,
+    _is_usage_limit_error,
+    _normalize_country,
+)
 
 
 def test_normalize_country_usa_aliases():
@@ -24,3 +29,12 @@ def test_dataset_id_from_object():
         default_dataset_id = "xyz"
 
     assert _dataset_id_from_run(FakeRun()) == "xyz"
+
+
+def test_is_usage_limit_error_detects_quota_text():
+    assert _is_usage_limit_error(RuntimeError("Monthly usage quota exceeded"))
+    assert not _is_usage_limit_error(RuntimeError("timeout connecting to linkedin"))
+
+
+def test_apify_usage_limit_error_is_runtime_error():
+    assert issubclass(ApifyUsageLimitError, RuntimeError)

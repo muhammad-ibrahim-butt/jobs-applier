@@ -32,7 +32,15 @@ uv run playwright install chromium
 2. Settings → Integrations → API tokens
 3. Put the token in `.env` as `APIFY_API_TOKEN`
 
-The default actor charges per result. Start with a low `max_results` in `config.yaml`.
+The default actor charges per result. On the **free Apify plan**, keep usage low:
+
+- `max_results: 15` (or lower)
+- 2–3 search queries (each × each platform burns compute)
+- `platforms: [linkedin, indeed]` — skip Glassdoor (often 403, still costs)
+- `fetch_linkedin_descriptions: false` (extra LinkedIn page fetches are expensive)
+- `RUN_INTERVAL_MINUTES=180` or higher in `.env` so the daemon does not scrape every hour
+
+If a run fails with a quota / usage message, wait for the monthly reset or trim the config above.
 
 ### Email (optional)
 
