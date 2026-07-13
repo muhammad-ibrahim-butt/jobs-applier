@@ -98,6 +98,7 @@ def normalize_apify_item(item: dict[str, Any]) -> JobListing | None:
         or item.get("apply_url")
         or item.get("applicationUrl")
         or item.get("job_url_direct")
+        or item.get("jobUrlDirect")
         or item.get("link")
         or ""
     )
@@ -109,6 +110,14 @@ def normalize_apify_item(item: dict[str, Any]) -> JobListing | None:
         or item.get("job_url_direct")
         or ""
     )
+    # Prefer company/ATS direct URL over a LinkedIn listing URL for apply routing.
+    direct = str(item.get("job_url_direct") or item.get("jobUrlDirect") or "")
+    if (
+        direct
+        and "linkedin.com" not in direct.lower()
+        and (not apply_url or "linkedin.com" in str(apply_url).lower())
+    ):
+        apply_url = direct
 
     salary_min, salary_max, currency = _extract_salary(item)
     # JobSpy / openclawai actor uses snake_case (`is_remote`, `date_posted`).

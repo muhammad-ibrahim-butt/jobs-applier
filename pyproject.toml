@@ -1,7 +1,7 @@
 [project]
 name = "jobs-applier"
-version = "0.1.0"
-description = "Local job scraper and auto-applier powered by Apify and Playwright"
+version = "0.2.0"
+description = "Local job scraper and auto-applier with Apify-optional multi-source discovery"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [

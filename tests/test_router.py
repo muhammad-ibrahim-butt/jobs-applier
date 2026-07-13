@@ -1,7 +1,7 @@
 """Tests for apply router."""
 
 from jobs_applier.apply.router import ApplyRouter
-from jobs_applier.models.job import ApplyTarget, JobListing, JobPlatform
+from jobs_applier.models.job import ApplyTarget, JobListing, JobPlatform, detect_ats_from_url
 
 
 def _job(**kwargs) -> JobListing:
@@ -25,9 +25,15 @@ def test_routes_linkedin_easy_apply():
 
 
 def test_routes_linkedin_without_easy_apply_flag():
-    """LinkedIn listings should still attempt Easy Apply; missing button emails later."""
+    """Non-Easy-Apply LinkedIn jobs go to email, not a blind Easy Apply attempt."""
     router = ApplyRouter()
     job = _job(is_easy_apply=False, apply_url="")
+    assert router.get_target(job) == ApplyTarget.UNSUPPORTED
+
+
+def test_routes_linkedin_easy_apply_only_when_flagged():
+    router = ApplyRouter()
+    job = _job(is_easy_apply=True)
     assert router.get_target(job) == ApplyTarget.LINKEDIN_EASY_APPLY
 
 
@@ -93,3 +99,10 @@ def test_unsupported_target():
     )
     assert router.get_target(job) == ApplyTarget.UNSUPPORTED
     assert router.get_adapter(job) is None
+
+
+def test_detect_ats_from_url_helpers():
+    assert detect_ats_from_url("https://jobs.ashbyhq.com/x/y") == ApplyTarget.ASHBY
+    assert detect_ats_from_url("https://boards.greenhouse.io/x") == ApplyTarget.GREENHOUSE
+    assert detect_ats_from_url("https://jobs.lever.co/x/y") == ApplyTarget.LEVER
+    assert detect_ats_from_url("https://linkedin.com/jobs/1") is None

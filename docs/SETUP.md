@@ -32,7 +32,7 @@ uv run playwright install chromium
 2. Settings → Integrations → API tokens
 3. Put the token in `.env` as `APIFY_API_TOKEN`
 
-The default Apify actor charges per result. On the **free Apify plan**, keep usage low — and use fallbacks so a dead quota does not stop discovery:
+The default Apify actor charges per result. **Apify is optional** — leave the token empty and rely on `jobspy` / `remotive` / `remoteok` in `search.sources`.
 
 ### Scrape sources (in `config.yaml`)
 
