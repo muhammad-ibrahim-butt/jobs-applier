@@ -82,3 +82,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+# python-jobspy pins markdownify<0.14; force patched CVE-2025-46656 build.
+[tool.uv]
+override-dependencies = ["markdownify>=0.14.1"]
