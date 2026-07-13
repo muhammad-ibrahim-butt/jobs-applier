@@ -107,11 +107,19 @@ def run(
         runner = PipelineRunner(settings)
         stats = runner.run(dry_run=dry_run)
         _print_stats(stats)
+        if stats.scraped == 0 and stats.filtered == 0 and stats.emailed == 0:
+            console.print(
+                "[yellow]No new jobs. If Apify quota is exhausted, wait for reset "
+                "or process backlog after the next successful scrape.[/yellow]"
+            )
     except FileNotFoundError as exc:
         console.print(f"[red]Config error:[/red] {exc}")
         raise typer.Exit(1) from exc
     except ValueError as exc:
         console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        console.print(f"[red]Pipeline error:[/red] {exc}")
         raise typer.Exit(1) from exc
 
 

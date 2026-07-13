@@ -21,7 +21,7 @@ from jobs_applier.models.job import (
 )
 from jobs_applier.notifications.email import EmailNotifier
 from jobs_applier.profile.qa_cache import QuestionCache
-from jobs_applier.scrapers.apify_client import ApifyJobScraper
+from jobs_applier.scrapers.apify_client import ApifyJobScraper, ApifyUsageLimitError
 from jobs_applier.storage.db import init_db
 from jobs_applier.storage.repositories import JobRepository
 
@@ -69,7 +69,7 @@ class PipelineRunner:
 
     def scrape_only(self) -> PipelineStats:
         stats = PipelineStats()
-        jobs = self._scrape()
+        jobs = self._scrape_safe()
         stats.scraped = len(jobs)
         passed, _ = FilterEngine(self._app_config, self._profile).filter_jobs(jobs)
         stats.filtered = len(passed)
@@ -83,8 +83,15 @@ class PipelineRunner:
         started = datetime.utcnow()
         engine = FilterEngine(self._app_config, self._profile)
 
-        jobs = self._scrape()
+        jobs = self._scrape_safe()
         stats.scraped = len(jobs)
+
+        if not jobs:
+            backlog = self._load_backlog_jobs()
+            if backlog:
+                logger.info("using_backlog_jobs", count=len(backlog))
+                jobs = backlog
+                stats.scraped = len(backlog)
 
         passed, rejected = engine.filter_jobs(jobs)
         stats.filtered = len(passed)
@@ -259,9 +266,23 @@ class PipelineRunner:
         )
         repo.commit()
 
-    def _scrape(self) -> list[JobListing]:
-        scraper = ApifyJobScraper(self._settings, self._app_config)
-        return scraper.scrape()
+    def _scrape_safe(self) -> list[JobListing]:
+        """Scrape without aborting the pipeline when Apify or a board fails."""
+        try:
+            return ApifyJobScraper(self._settings, self._app_config).scrape()
+        except ApifyUsageLimitError as exc:
+            logger.error("scrape_aborted_apify_quota", error=str(exc))
+            return []
+        except Exception as exc:
+            logger.error("scrape_aborted", error=str(exc))
+            return []
+
+    def _load_backlog_jobs(self) -> list[JobListing]:
+        session = self._session_factory()
+        try:
+            return JobRepository(session).unapplied_jobs(limit=40)
+        finally:
+            session.close()
 
     def _persist_jobs(self, jobs: list[JobListing]) -> None:
         session = self._session_factory()

@@ -38,6 +38,8 @@ _USAGE_NEEDLES = (
     "out of memory",
     "not enough",
     "credit",
+    "hard limit",
+    "forbidden",
 )
 
 
@@ -65,14 +67,20 @@ def _dataset_id_from_run(run: Any) -> str:
 
 def _is_usage_limit_error(exc: BaseException) -> bool:
     status = getattr(exc, "status_code", None) or getattr(exc, "statusCode", None)
-    if status in (402, 429):
+    if status in (402, 403, 429):
+        text = str(exc).lower()
+        # 403 is sometimes auth; only treat as quota when the body says so.
+        if status == 403 and not any(n in text for n in _USAGE_NEEDLES):
+            return False
+        if status in (402, 429):
+            return True
         return True
     text = str(exc).lower()
     return any(needle in text for needle in _USAGE_NEEDLES)
 
 
 class ApifyJobScraper:
-    """Scrape jobs via Apify actor."""
+    """Scrape jobs via Apify actor — one site at a time so one board's failure is isolated."""
 
     def __init__(self, settings: Settings, app_config: AppConfig) -> None:
         self._settings = settings
@@ -81,10 +89,13 @@ class ApifyJobScraper:
             raise ValueError("APIFY_API_TOKEN is required. Set it in your .env file.")
         self._client = ApifyClient(settings.apify_api_token)
 
-    def _build_actor_input(self) -> dict[str, Any]:
+    def _enabled_platforms(self) -> list[str]:
         search = self._config.search
         enabled = self._config.platforms_enabled
-        platforms = [p for p in search.platforms if getattr(enabled, p, True)]
+        return [p for p in search.platforms if getattr(enabled, p, True)]
+
+    def _build_actor_input(self, platforms: list[str]) -> dict[str, Any]:
+        search = self._config.search
         country = _normalize_country(search.country)
 
         # openclawai/job-board-scraper uses `sites`. Omitting country for worldwide
@@ -109,11 +120,11 @@ class ApifyJobScraper:
             actor_input.pop("hoursOld", None)
         return actor_input
 
-    def scrape(self) -> list[JobListing]:
-        actor_input = self._build_actor_input()
+    def _call_actor(self, platforms: list[str]) -> list[JobListing]:
+        actor_input = self._build_actor_input(platforms)
         actor_id = self._settings.apify_actor_id
+        logger.info("starting_apify_run", actor_id=actor_id, platforms=platforms, input=actor_input)
 
-        logger.info("starting_apify_run", actor_id=actor_id, input=actor_input)
         try:
             run = self._client.actor(actor_id).call(run_input=actor_input)
         except ApifyApiError as exc:
@@ -138,7 +149,71 @@ class ApifyJobScraper:
         if not dataset_id:
             raise RuntimeError("Apify run returned no dataset ID")
         items = list(self._client.dataset(dataset_id).iterate_items())
-
         jobs = normalize_apify_dataset(items)
-        logger.info("apify_scrape_complete", raw_count=len(items), normalized_count=len(jobs))
+        logger.info(
+            "apify_platform_complete",
+            platforms=platforms,
+            raw_count=len(items),
+            normalized_count=len(jobs),
+        )
         return jobs
+
+    def scrape(self) -> list[JobListing]:
+        """Scrape boards; isolate failures so one site cannot cancel the rest.
+
+        Prefer a single combined Apify run (cheaper). If that fails for a
+        non-quota reason, retry each platform alone. Quota errors stop further
+        Apify calls and return whatever was collected.
+        """
+        platforms = self._enabled_platforms()
+        if not platforms:
+            logger.warning("no_platforms_enabled")
+            return []
+
+        try:
+            jobs = self._call_actor(platforms)
+            logger.info("apify_scrape_complete", normalized_count=len(jobs), mode="combined")
+            return jobs
+        except ApifyUsageLimitError as exc:
+            logger.error("apify_quota_hit", error=str(exc), mode="combined")
+            return []
+        except Exception as exc:
+            logger.warning(
+                "apify_combined_failed_retrying_per_platform",
+                error=str(exc),
+                platforms=platforms,
+            )
+
+        collected: list[JobListing] = []
+        seen: set[str] = set()
+        for platform in platforms:
+            try:
+                jobs = self._call_actor([platform])
+            except ApifyUsageLimitError as exc:
+                logger.error(
+                    "apify_quota_hit",
+                    platform=platform,
+                    error=str(exc),
+                    tip="Stopping further Apify calls; keeping jobs already scraped",
+                )
+                break
+            except Exception as exc:
+                logger.error(
+                    "apify_platform_failed",
+                    platform=platform,
+                    error=str(exc),
+                    tip="Other platforms will still run",
+                )
+                continue
+
+            for job in jobs:
+                if job.fingerprint not in seen:
+                    seen.add(job.fingerprint)
+                    collected.append(job)
+
+        logger.info(
+            "apify_scrape_complete",
+            normalized_count=len(collected),
+            mode="per_platform_fallback",
+        )
+        return collected

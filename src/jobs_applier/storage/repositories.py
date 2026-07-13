@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from jobs_applier.models.job import ApplicationResult, ApplicationStatus, JobListing
+from jobs_applier.models.job import ApplicationResult, ApplicationStatus, JobListing, JobPlatform
 from jobs_applier.storage.models import ApplicationRecord, JobRecord, RunRecord
 
 
@@ -109,6 +109,54 @@ class JobRepository:
             .limit(limit)
             .all()
         )
+
+    def unapplied_jobs(self, limit: int = 40) -> list[JobListing]:
+        """Jobs saved earlier that never reached applied/emailed/dry_run."""
+        applied_fps = {
+            row[0]
+            for row in (
+                self._session.query(ApplicationRecord.job_fingerprint)
+                .filter(
+                    ApplicationRecord.status.in_(
+                        [
+                            ApplicationStatus.APPLIED.value,
+                            ApplicationStatus.DRY_RUN.value,
+                            ApplicationStatus.EMAILED.value,
+                        ]
+                    )
+                )
+                .all()
+            )
+        }
+        records = (
+            self._session.query(JobRecord)
+            .order_by(JobRecord.first_seen_at.desc())
+            .limit(limit * 3)
+            .all()
+        )
+        out: list[JobListing] = []
+        for rec in records:
+            if rec.fingerprint in applied_fps:
+                continue
+            try:
+                platform = JobPlatform(rec.platform)
+            except ValueError:
+                platform = JobPlatform.UNKNOWN
+            out.append(
+                JobListing(
+                    platform=platform,
+                    external_id=rec.external_id,
+                    title=rec.title,
+                    company=rec.company,
+                    location=rec.location or "",
+                    apply_url=rec.apply_url or "",
+                    job_url=rec.job_url or "",
+                    is_easy_apply=bool(rec.is_easy_apply),
+                )
+            )
+            if len(out) >= limit:
+                break
+        return out
 
     def save_run(self, stats: dict[str, Any]) -> None:
         self._session.add(RunRecord(**stats))
