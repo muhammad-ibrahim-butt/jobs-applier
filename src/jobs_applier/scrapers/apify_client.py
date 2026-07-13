@@ -128,8 +128,7 @@ class ApifyJobScraper:
         except Exception as exc:
             if _is_usage_limit_error(exc):
                 raise ApifyUsageLimitError(
-                    "Apify usage/quota limit hit (common on free tiers). "
-                    f"Original: {exc}"
+                    f"Apify usage/quota limit hit (common on free tiers). Original: {exc}"
                 ) from exc
             raise
 
