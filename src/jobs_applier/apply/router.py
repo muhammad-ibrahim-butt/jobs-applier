@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from jobs_applier.apply.ashby import AshbyAdapter
 from jobs_applier.apply.base import ApplyAdapter
 from jobs_applier.apply.greenhouse import GreenhouseAdapter
 from jobs_applier.apply.lever import LeverAdapter
@@ -17,6 +18,7 @@ class ApplyRouter:
             ApplyTarget.LINKEDIN_EASY_APPLY: LinkedInEasyApplyAdapter(),
             ApplyTarget.GREENHOUSE: GreenhouseAdapter(),
             ApplyTarget.LEVER: LeverAdapter(),
+            ApplyTarget.ASHBY: AshbyAdapter(),
         }
 
     def get_target(self, job: JobListing) -> ApplyTarget:

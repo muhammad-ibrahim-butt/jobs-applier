@@ -20,6 +20,7 @@ class ApplyTarget(StrEnum):
     LINKEDIN_EASY_APPLY = "linkedin_easy_apply"
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
+    ASHBY = "ashby"
     UNSUPPORTED = "unsupported"
 
 
@@ -58,14 +59,42 @@ class JobListing(BaseModel):
         return f"{self.platform.value}:{self.external_id}"
 
     def apply_target(self) -> ApplyTarget:
-        url = (self.apply_url or self.job_url).lower()
-        if self.platform == JobPlatform.LINKEDIN and self.is_easy_apply:
-            return ApplyTarget.LINKEDIN_EASY_APPLY
-        if "greenhouse.io" in url or "boards.greenhouse.io" in url:
-            return ApplyTarget.GREENHOUSE
-        if "jobs.lever.co" in url or "lever.co" in url:
-            return ApplyTarget.LEVER
-        return ApplyTarget.UNSUPPORTED
+        return detect_apply_target(self)
+
+
+def _urls_blob(job: JobListing) -> str:
+    parts = [job.apply_url or "", job.job_url or ""]
+    raw = job.raw or {}
+    for key in ("job_url_direct", "jobUrlDirect", "applyUrl", "link", "url"):
+        value = raw.get(key)
+        if value:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
+def detect_apply_target(job: JobListing) -> ApplyTarget:
+    """Pick the best auto-apply adapter for a listing."""
+    urls = _urls_blob(job)
+
+    # External ATS wins even when the scrape source is LinkedIn/Indeed.
+    if "ashbyhq.com" in urls or "jobs.ashbyhq.com" in urls:
+        return ApplyTarget.ASHBY
+    if "greenhouse.io" in urls or "boards.greenhouse.io" in urls:
+        return ApplyTarget.GREENHOUSE
+    if "jobs.lever.co" in urls or "lever.co/jobs" in urls:
+        return ApplyTarget.LEVER
+
+    apply = (job.apply_url or "").lower()
+    listing = (job.job_url or apply).lower()
+    external_apply = bool(apply) and "linkedin.com" not in apply
+    on_linkedin = job.platform == JobPlatform.LINKEDIN or "linkedin.com" in listing
+
+    # LinkedIn listings without an external ATS → try Easy Apply first.
+    # Missing button → adapter skips → email fallback.
+    if on_linkedin and not external_apply:
+        return ApplyTarget.LINKEDIN_EASY_APPLY
+
+    return ApplyTarget.UNSUPPORTED
 
 
 class ApplicationResult(BaseModel):
@@ -75,6 +104,8 @@ class ApplicationResult(BaseModel):
     status: ApplicationStatus
     apply_target: ApplyTarget
     message: str = ""
+    job_title: str = ""
+    job_company: str = ""
     applied_at: datetime = Field(default_factory=datetime.utcnow)
 
 

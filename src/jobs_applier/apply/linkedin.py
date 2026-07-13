@@ -148,4 +148,6 @@ class LinkedInEasyApplyAdapter:
             status=status,
             apply_target=ApplyTarget.LINKEDIN_EASY_APPLY,
             message=message,
+            job_title=job.title,
+            job_company=job.company,
         )
