@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 
 import structlog
@@ -64,13 +65,20 @@ class PipelineRunner:
         dry_run = self._settings.dry_run if dry_run is None else dry_run
         stats = PipelineStats()
         started = datetime.utcnow()
+        engine = FilterEngine(self._app_config, self._profile)
 
         jobs = self._scrape()
         stats.scraped = len(jobs)
 
-        passed, rejected = FilterEngine(self._app_config, self._profile).filter_jobs(jobs)
+        passed, rejected = engine.filter_jobs(jobs)
         stats.filtered = len(passed)
-        logger.info("filter_complete", passed=len(passed), rejected=len(rejected))
+        reason_counts = dict(Counter(reason for _, reason in rejected).most_common(8))
+        logger.info(
+            "filter_complete",
+            passed=len(passed),
+            rejected=len(rejected),
+            reject_reasons=reason_counts,
+        )
 
         session = self._session_factory()
         try:
@@ -92,13 +100,34 @@ class PipelineRunner:
                 return stats
 
             auto_jobs: list[JobListing] = []
-            manual_jobs: list[JobListing] = []
+            manual_all: list[JobListing] = []
             for job in eligible:
-                target = self._router.get_target(job)
-                if target == ApplyTarget.UNSUPPORTED:
-                    manual_jobs.append(job)
+                if self._router.get_target(job) == ApplyTarget.UNSUPPORTED:
+                    manual_all.append(job)
                 else:
                     auto_jobs.append(job)
+
+            manual_jobs = engine.select_for_email(manual_all)
+            skipped_manual = [j for j in manual_all if j not in manual_jobs]
+            logger.info(
+                "manual_digest_selected",
+                selected=len(manual_jobs),
+                skipped_lower_relevance=len(skipped_manual),
+                cap=self._app_config.filters.max_email_jobs,
+            )
+
+            for job in skipped_manual:
+                result = ApplicationResult(
+                    job_fingerprint=job.fingerprint,
+                    status=ApplicationStatus.SKIPPED,
+                    apply_target=ApplyTarget.UNSUPPORTED,
+                    message="Below email relevance / digest cap",
+                )
+                stats.skipped += 1
+                stats.results.append(result)
+                repo.save_application(result)
+            if skipped_manual:
+                repo.commit()
 
             if manual_jobs:
                 emailed_ok = self._notifier.send_manual_apply_digest(manual_jobs)
@@ -110,7 +139,7 @@ class PipelineRunner:
                         ),
                         apply_target=ApplyTarget.UNSUPPORTED,
                         message=(
-                            "Emailed for manual apply"
+                            "Emailed for manual apply (top match)"
                             if emailed_ok
                             else "Failed to email manual-apply job"
                         ),
@@ -133,8 +162,8 @@ class PipelineRunner:
                 return stats
 
             if not auto_jobs:
-                self._notifier.send_run_summary(stats)
                 self._save_run(repo, started, stats)
+                self._notifier.send_run_summary(stats)
                 return stats
 
             qa_cache = QuestionCache(self._settings.questions_cache_path, self._profile)
@@ -174,25 +203,26 @@ class PipelineRunner:
                     repo.commit()
 
             if fallback_manual:
-                emailed_ok = self._notifier.send_manual_apply_digest(fallback_manual)
+                to_email = engine.select_for_email(fallback_manual)
+                emailed_ok = (
+                    self._notifier.send_manual_apply_digest(to_email) if to_email else False
+                )
                 for job in fallback_manual:
-                    result = ApplicationResult(
-                        job_fingerprint=job.fingerprint,
-                        status=(
-                            ApplicationStatus.EMAILED if emailed_ok else ApplicationStatus.SKIPPED
-                        ),
-                        apply_target=self._router.get_target(job),
-                        message=(
-                            "Auto-apply skipped; emailed for manual apply"
-                            if emailed_ok
-                            else "Auto-apply skipped"
-                        ),
-                    )
-                    if emailed_ok:
+                    if job in to_email and emailed_ok:
+                        status = ApplicationStatus.EMAILED
+                        message = "Auto-apply skipped; emailed for manual apply"
                         stats.emailed += 1
                         stats.manual_jobs.append(job)
                     else:
+                        status = ApplicationStatus.SKIPPED
+                        message = "Auto-apply skipped"
                         stats.skipped += 1
+                    result = ApplicationResult(
+                        job_fingerprint=job.fingerprint,
+                        status=status,
+                        apply_target=self._router.get_target(job),
+                        message=message,
+                    )
                     stats.results.append(result)
                     repo.save_application(result)
                 repo.commit()

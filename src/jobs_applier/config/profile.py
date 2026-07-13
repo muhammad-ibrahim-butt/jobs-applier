@@ -31,6 +31,13 @@ class FilterConfig(BaseModel):
     remote_only: bool = False
     max_days_old: int = Field(default=7, ge=1, le=90)
     min_salary: int | None = None
+    # Resume/skill relevance (0–100). Jobs below this score are dropped.
+    min_relevance_score: int = Field(default=0, ge=0, le=100)
+    preferred_keywords: list[str] = Field(default_factory=list)
+    # Drop jobs with no posted date when true (stricter for "recent only").
+    require_posted_date: bool = False
+    # Cap how many manual-apply jobs are emailed per run (top by relevance).
+    max_email_jobs: int = Field(default=15, ge=1, le=100)
 
 
 class PlatformsEnabled(BaseModel):

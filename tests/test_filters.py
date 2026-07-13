@@ -93,6 +93,26 @@ def test_rejects_old_jobs():
     assert reason == "too old"
 
 
+def test_rejects_missing_posted_date_when_required():
+    config = AppConfig(filters=FilterConfig(require_posted_date=True, max_days_old=2))
+    engine = FilterEngine(config, _profile())
+    ok, reason = engine.passes(_make_job(posted_at=None))
+    assert ok is False
+    assert reason == "missing posted date"
+
+
+def test_select_for_email_caps_results():
+    config = AppConfig(filters=FilterConfig(max_email_jobs=2, min_relevance_score=0))
+    engine = FilterEngine(config, _profile())
+    jobs = [
+        _make_job(external_id="1", title="Python Engineer", description="python laravel"),
+        _make_job(external_id="2", title="Java Dev", description="java spring"),
+        _make_job(external_id="3", title="React Laravel", description="react laravel python"),
+    ]
+    selected = engine.select_for_email(jobs)
+    assert len(selected) == 2
+
+
 def test_include_title_keywords():
     config = AppConfig(filters=FilterConfig(include_title_keywords=["engineer"]))
     engine = FilterEngine(config, _profile())

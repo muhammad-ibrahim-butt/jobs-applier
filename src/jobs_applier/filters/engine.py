@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from jobs_applier.config.profile import AppConfig, ApplicantProfile
+from jobs_applier.filters.relevance import RelevanceScorer
 from jobs_applier.models.job import JobListing
 
 _ONSITE_MARKERS = (
@@ -23,6 +24,10 @@ class FilterEngine:
         self._filters = app_config.filters
         self._search = app_config.search
         self._profile = profile
+        self._scorer = RelevanceScorer(profile, self._filters.preferred_keywords)
+
+    def score(self, job: JobListing) -> int:
+        return self._scorer.score(job)
 
     def _matches_keywords(self, text: str, keywords: list[str]) -> bool:
         text_lower = text.lower()
@@ -34,8 +39,6 @@ class FilterEngine:
         blob = f"{job.location} {job.title} {job.description[:500]}".lower()
         if "remote" in blob or "work from home" in blob or "wfh" in blob:
             return True
-        # Worldwide remote searches often return empty location — treat as remote
-        # unless clearly onsite/hybrid.
         if not job.location.strip():
             return True
         return not any(marker in blob for marker in _ONSITE_MARKERS)
@@ -73,7 +76,8 @@ class FilterEngine:
         if self._filters.remote_only and not self._looks_remote(job):
             return False, "not remote"
 
-        # Note: non-Easy-Apply jobs are NOT rejected here — pipeline emails them.
+        if self._filters.require_posted_date and job.posted_at is None:
+            return False, "missing posted date"
 
         if job.posted_at and self._filters.max_days_old:
             cutoff = datetime.utcnow() - timedelta(days=self._filters.max_days_old)
@@ -87,18 +91,31 @@ class FilterEngine:
         ):
             return False, "salary below minimum"
 
+        relevance = self._scorer.score(job)
+        if relevance < self._filters.min_relevance_score:
+            return False, f"low relevance ({relevance} < {self._filters.min_relevance_score})"
+
         return True, "passed"
 
     def filter_jobs(
         self, jobs: list[JobListing]
     ) -> tuple[list[JobListing], list[tuple[JobListing, str]]]:
         """Filter jobs, returning (passed, rejected_with_reasons)."""
-        passed: list[JobListing] = []
+        scored: list[tuple[int, JobListing]] = []
         rejected: list[tuple[JobListing, str]] = []
         for job in jobs:
             ok, reason = self.passes(job)
             if ok:
-                passed.append(job)
+                scored.append((self._scorer.score(job), job))
             else:
                 rejected.append((job, reason))
+        # Highest relevance first so digests / caps take the best matches.
+        scored.sort(key=lambda item: item[0], reverse=True)
+        passed = [job for _, job in scored]
         return passed, rejected
+
+    def select_for_email(self, jobs: list[JobListing]) -> list[JobListing]:
+        """Keep only the top N jobs for the manual-apply digest."""
+        limit = self._filters.max_email_jobs
+        ranked = sorted(jobs, key=self._scorer.score, reverse=True)
+        return ranked[:limit]

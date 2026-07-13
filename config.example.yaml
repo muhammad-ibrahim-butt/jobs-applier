@@ -1,19 +1,18 @@
-# Search and scrape settings — worldwide remote
+# Example search/filter config — copy to config.yaml via `jobs-applier init`
 search:
   queries:
-    - software engineer
-    - backend developer
-    - python developer
+    - remote software engineer
+    - remote backend engineer
   location: Remote
   country: worldwide
   platforms:
     - linkedin
     - indeed
     - glassdoor
-  max_results: 40
+  max_results: 30
   easy_apply_only: false
   is_remote: true
-  hours_old: 168
+  hours_old: 48
 
 filters:
   include_title_keywords:
@@ -21,25 +20,24 @@ filters:
     - developer
   exclude_title_keywords:
     - intern
-    - internship
-    - unpaid
-    - senior director
-    - principal
-    - staff
+    - junior
+    - "entry level"
   exclude_description_keywords:
-    - clearance required
     - must be US citizen
-    - us citizenship required
-    - security clearance
-    - must be located in the united states
-    - must reside in the us
-    - no remote
     - onsite only
-    - on-site only
+    - relocation required
   exclude_companies: []
   remote_only: true
-  max_days_old: 7
+  max_days_old: 2
+  # Keep false unless boards reliably return posted dates (JobSpy: date_posted).
+  require_posted_date: false
   min_salary: null
+  min_relevance_score: 25
+  preferred_keywords:
+    - python
+    - backend
+    - api
+  max_email_jobs: 12
 
 platforms_enabled:
   linkedin: true
