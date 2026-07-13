@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/muhammad-ibrahim-butt/jobs-applier/security/advisories/new
+    about: Please report security issues privately — do not open a public issue.
+  - name: Setup help
+    url: https://github.com/muhammad-ibrahim-butt/jobs-applier/blob/main/docs/SETUP.md
+    about: Troubleshooting and SMTP / LinkedIn setup guide
