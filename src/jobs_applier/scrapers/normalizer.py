@@ -76,21 +76,34 @@ def normalize_apify_item(item: dict[str, Any]) -> JobListing | None:
         item.get("applyUrl")
         or item.get("apply_url")
         or item.get("applicationUrl")
+        or item.get("job_url_direct")
         or item.get("link")
         or ""
     )
-    job_url = item.get("jobUrl") or item.get("job_url") or item.get("link") or apply_url
+    job_url = (
+        item.get("jobUrl")
+        or item.get("job_url")
+        or item.get("link")
+        or apply_url
+        or item.get("job_url_direct")
+        or ""
+    )
 
     salary_min, salary_max, currency = _extract_salary(item)
+    # JobSpy / openclawai actor uses snake_case (`is_remote`, `date_posted`).
     is_remote = bool(
         item.get("isRemote")
+        or item.get("is_remote")
         or item.get("remote")
         or "remote" in str(item.get("location", "")).lower()
     )
     is_easy_apply = bool(item.get("easyApply") or item.get("easy_apply") or item.get("isEasyApply"))
 
     posted_at = _parse_datetime(
-        item.get("postedAt") or item.get("posted_at") or item.get("datePosted")
+        item.get("postedAt")
+        or item.get("posted_at")
+        or item.get("datePosted")
+        or item.get("date_posted")
     )
 
     return JobListing(

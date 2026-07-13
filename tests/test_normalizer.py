@@ -46,3 +46,31 @@ def test_normalize_indeed_item():
 
 def test_normalize_missing_title_returns_none():
     assert normalize_apify_item({"company": "No Title Corp"}) is None
+
+
+def test_normalize_jobspy_snake_case_fields():
+    """openclawai/job-board-scraper emits JobSpy-style snake_case keys."""
+    item = {
+        "site": "linkedin",
+        "id": "spy-1",
+        "title": "Python Backend Engineer",
+        "company": "Acme",
+        "location": "United States",
+        "description": "",
+        "job_url": "https://linkedin.com/jobs/view/1",
+        "job_url_direct": "https://linkedin.com/jobs/view/1/apply",
+        "is_remote": True,
+        "date_posted": "2026-07-13",
+        "salary_min": 80000,
+        "salary_max": 120000,
+    }
+    job = normalize_apify_item(item)
+    assert job is not None
+    assert job.platform == JobPlatform.LINKEDIN
+    assert job.is_remote is True
+    assert job.posted_at is not None
+    assert job.posted_at.year == 2026
+    assert job.posted_at.month == 7
+    assert job.posted_at.day == 13
+    assert job.apply_url.endswith("/apply")
+    assert job.salary_min == 80000
