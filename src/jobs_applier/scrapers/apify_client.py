@@ -71,6 +71,8 @@ class ApifyJobScraper:
             "maxResults": search.max_results,
             "isRemote": search.is_remote,
             "hoursOld": search.hours_old,
+            # Empty LinkedIn descriptions make relevance scoring useless.
+            "linkedinFetchDescription": True,
         }
         if country:
             actor_input["country"] = country
