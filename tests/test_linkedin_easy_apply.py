@@ -2,8 +2,8 @@
 
 from jobs_applier.apply.linkedin import (
     EASY_APPLY_ROLE_PATTERN,
-    SUCCESS_TEXT_PATTERN,
     SUBMIT_ROLE_PATTERN,
+    SUCCESS_TEXT_PATTERN,
 )
 
 

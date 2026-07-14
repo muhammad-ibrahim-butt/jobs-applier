@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
-from jobs_applier.models.job import ApplicationResult, ApplicationStatus, ApplyTarget, JobListing, JobPlatform
+from jobs_applier.models.job import (
+    ApplicationResult,
+    ApplicationStatus,
+    ApplyTarget,
+    JobListing,
+    JobPlatform,
+)
 from jobs_applier.storage.db import init_db
 from jobs_applier.storage.repositories import JobRepository
 
