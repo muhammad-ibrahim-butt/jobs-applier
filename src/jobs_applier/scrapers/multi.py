@@ -28,6 +28,9 @@ class MultiSourceScraper:
     def __init__(self, settings: Settings, app_config: AppConfig) -> None:
         self._settings = settings
         self._config = app_config
+        self.last_sources_tried: list[str] = []
+        self.last_sources_hit: list[str] = []
+        self.last_errors: list[str] = []
 
     def _factories(self) -> list[tuple[str, SourceFactory]]:
         settings = self._settings
@@ -67,22 +70,30 @@ class MultiSourceScraper:
     def scrape(self) -> list[JobListing]:
         mode = (self._config.search.source_mode or "fallback").lower()
         factories = self._factories()
+        self.last_sources_tried = []
+        self.last_sources_hit = []
+        self.last_errors = []
         if not factories:
             logger.error("no_scrape_sources_configured")
+            self.last_errors.append("no_scrape_sources_configured")
             return []
 
         collected: list[JobListing] = []
         for name, factory in factories:
+            self.last_sources_tried.append(name)
             try:
                 scraper = factory()
                 jobs = scraper.scrape()
             except Exception as exc:
+                msg = f"{name}: {exc}"
+                self.last_errors.append(msg)
                 logger.error("scrape_source_failed", source=name, error=str(exc))
                 continue
 
             logger.info("scrape_source_complete", source=name, count=len(jobs), mode=mode)
             if not jobs:
                 continue
+            self.last_sources_hit.append(name)
             if mode == "fallback":
                 return jobs
             collected.extend(jobs)

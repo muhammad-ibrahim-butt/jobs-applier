@@ -131,6 +131,7 @@ class PipelineStats(BaseModel):
     dry_run: int = 0
     emailed: int = 0
     cap_reached: bool = False
+    scrape_notes: str = ""
     results: list[ApplicationResult] = Field(default_factory=list)
     new_jobs: list[JobListing] = Field(default_factory=list)
     manual_jobs: list[JobListing] = Field(default_factory=list)

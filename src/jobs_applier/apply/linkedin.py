@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 import structlog
-from playwright.sync_api import BrowserContext, Page
+from playwright.sync_api import BrowserContext, Locator, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from jobs_applier.apply.form_filler import FormFiller, human_delay
@@ -21,6 +23,55 @@ from jobs_applier.profile.qa_cache import QuestionCache
 logger = structlog.get_logger(__name__)
 
 MAX_MODAL_STEPS = 15
+
+# Shared patterns — kept as strings so unit tests can assert without Playwright.
+EASY_APPLY_ROLE_PATTERN = re.compile(r"easy\s*apply", re.I)
+SUBMIT_ROLE_PATTERN = re.compile(r"submit\s+application", re.I)
+NEXT_ROLE_PATTERN = re.compile(r"^(next|continue|review)(\s|$)", re.I)
+SUCCESS_TEXT_PATTERN = re.compile(
+    r"(application\s+sent|application\s+submitted|your\s+application\s+was\s+sent|"
+    r"you\s+applied|application\s+was\s+submitted)",
+    re.I,
+)
+
+
+def find_easy_apply_button(page: Page) -> Locator | None:
+    """Locate the Easy Apply CTA with several LinkedIn DOM variants."""
+    candidates: list[Locator] = [
+        page.get_by_role("button", name=EASY_APPLY_ROLE_PATTERN),
+        page.locator("button.jobs-apply-button").filter(has_text=EASY_APPLY_ROLE_PATTERN),
+        page.locator("button.jobs-s-apply__application-button").filter(
+            has_text=EASY_APPLY_ROLE_PATTERN
+        ),
+        page.locator("button[aria-label*='Easy Apply' i]"),
+        page.locator("button.jobs-apply-button--top-card").filter(has_text=EASY_APPLY_ROLE_PATTERN),
+    ]
+    for loc in candidates:
+        btn = loc.first
+        try:
+            if btn.is_visible(timeout=2500):
+                btn.scroll_into_view_if_needed()
+                return btn
+        except Exception:
+            continue
+    return None
+
+
+def page_shows_already_applied(page: Page) -> bool:
+    markers = (
+        page.get_by_role("button", name=re.compile(r"^applied$", re.I)).first,
+        page.locator("button.jobs-apply-button")
+        .filter(has_text=re.compile(r"^applied$", re.I))
+        .first,
+        page.locator("[aria-label*='Applied' i]").first,
+    )
+    for btn in markers:
+        try:
+            if btn.is_visible(timeout=800):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 class LinkedInEasyApplyAdapter:
@@ -47,15 +98,16 @@ class LinkedInEasyApplyAdapter:
             assert page is not None
             page.goto(url, wait_until="domcontentloaded", timeout=45000)
             human_delay(1000, 2000)
+            self._wait_for_job_detail(page)
 
-            easy_apply_btn = page.locator(
-                "button.jobs-apply-button:has-text('Easy Apply'), "
-                "button:has-text('Easy Apply'), "
-                "button[aria-label*='Easy Apply']"
-            ).first
+            if page_shows_already_applied(page):
+                return self._result(job, ApplicationStatus.SKIPPED, "Already applied on LinkedIn")
 
-            if easy_apply_btn.is_visible(timeout=5000):
-                return self._complete_easy_apply(page, job, profile, qa_cache, settings, dry_run)
+            easy_apply_btn = find_easy_apply_button(page)
+            if easy_apply_btn is not None:
+                return self._complete_easy_apply(
+                    page, job, profile, qa_cache, settings, dry_run, easy_apply_btn
+                )
 
             # No Easy Apply — follow company / external apply if it is a known ATS.
             external = self._resolve_external_apply_url(page)
@@ -79,11 +131,9 @@ class LinkedInEasyApplyAdapter:
                     page = None
                     from jobs_applier.apply.router import ApplyRouter
 
-                    adapter = ApplyRouter().get_adapter(redirected)
-                    if adapter is not None:
-                        return adapter.apply(
-                            redirected, context, profile, qa_cache, settings, dry_run
-                        )
+                    return ApplyRouter().apply(
+                        redirected, context, profile, qa_cache, settings, dry_run=dry_run
+                    )
 
             return self._result(
                 job,
@@ -101,6 +151,19 @@ class LinkedInEasyApplyAdapter:
             if page is not None:
                 page.close()
 
+    def _wait_for_job_detail(self, page: Page) -> None:
+        for sel in (
+            "div.jobs-details",
+            "div.job-view-layout",
+            "div.jobs-unified-top-card",
+            "main",
+        ):
+            try:
+                page.wait_for_selector(sel, timeout=8000)
+                return
+            except PlaywrightTimeout:
+                continue
+
     def _complete_easy_apply(
         self,
         page: Page,
@@ -109,12 +172,8 @@ class LinkedInEasyApplyAdapter:
         qa_cache: QuestionCache,
         settings: Settings,
         dry_run: bool,
+        easy_apply_btn: Locator,
     ) -> ApplicationResult:
-        easy_apply_btn = page.locator(
-            "button.jobs-apply-button:has-text('Easy Apply'), "
-            "button:has-text('Easy Apply'), "
-            "button[aria-label*='Easy Apply']"
-        ).first
         easy_apply_btn.click()
         human_delay(800, 1500)
 
@@ -151,10 +210,8 @@ class LinkedInEasyApplyAdapter:
                 self._close_modal(page)
                 return self._result(job, ApplicationStatus.DRY_RUN, "Dry run — form filled")
 
-            submit_btn = page.locator(
-                "button[aria-label='Submit application'], button:has-text('Submit application')"
-            ).first
-            if submit_btn.is_visible(timeout=2000):
+            submit_btn = self._find_submit_button(page)
+            if submit_btn is not None:
                 submit_btn.click()
                 human_delay(1500, 2500)
                 if self._is_submitted(page):
@@ -163,12 +220,8 @@ class LinkedInEasyApplyAdapter:
                     job, ApplicationStatus.FAILED, "Submit clicked but not confirmed"
                 )
 
-            next_btn = page.locator(
-                "button[aria-label='Continue to next step'], "
-                "button[aria-label='Review your application'], "
-                "button:has-text('Next'), button:has-text('Review')"
-            ).first
-            if next_btn.is_visible(timeout=2000):
+            next_btn = self._find_next_button(page)
+            if next_btn is not None:
                 next_btn.click()
                 human_delay(800, 1500)
                 continue
@@ -176,6 +229,41 @@ class LinkedInEasyApplyAdapter:
             break
 
         return self._result(job, ApplicationStatus.FAILED, "Could not complete application modal")
+
+    def _find_submit_button(self, page: Page) -> Locator | None:
+        candidates = (
+            page.get_by_role("button", name=SUBMIT_ROLE_PATTERN),
+            page.locator("button[aria-label*='Submit application' i]"),
+            page.locator("button:has-text('Submit application')"),
+        )
+        for loc in candidates:
+            btn = loc.first
+            try:
+                if btn.is_visible(timeout=1500):
+                    return btn
+            except Exception:
+                continue
+        return None
+
+    def _find_next_button(self, page: Page) -> Locator | None:
+        candidates = (
+            page.get_by_role("button", name=re.compile(r"continue to next step", re.I)),
+            page.get_by_role("button", name=re.compile(r"review your application", re.I)),
+            page.get_by_role("button", name=NEXT_ROLE_PATTERN),
+            page.locator("button[aria-label*='Continue' i], button[aria-label*='Review' i]"),
+            page.locator("button:has-text('Next'), button:has-text('Review')"),
+        )
+        for loc in candidates:
+            btn = loc.first
+            try:
+                if btn.is_visible(timeout=1500):
+                    # Avoid clicking "Next" that is disabled.
+                    if btn.is_disabled():
+                        continue
+                    return btn
+            except Exception:
+                continue
+        return None
 
     def _resolve_external_apply_url(self, page: Page) -> str | None:
         """Find an off-LinkedIn apply URL on the job page (ATS handoff)."""
@@ -218,9 +306,17 @@ class LinkedInEasyApplyAdapter:
         return None
 
     def _is_submitted(self, page: Page) -> bool:
-        success = page.locator("text=Application submitted, text=Your application was sent").first
         try:
-            return success.is_visible(timeout=5000)
+            text = page.locator("body").inner_text(timeout=3000)
+        except Exception:
+            text = ""
+        if SUCCESS_TEXT_PATTERN.search(text or ""):
+            return True
+        success = page.locator(
+            "text=Application submitted, text=Your application was sent, text=Application sent"
+        ).first
+        try:
+            return success.is_visible(timeout=3000)
         except Exception:
             return False
 

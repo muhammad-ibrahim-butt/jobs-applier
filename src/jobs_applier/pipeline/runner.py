@@ -67,6 +67,7 @@ class PipelineRunner:
         self._session_factory = init_db(self._settings.database_path)
         self._router = ApplyRouter()
         self._notifier = EmailNotifier(self._settings)
+        self._last_scrape_notes = ""
 
     def scrape_only(self) -> PipelineStats:
         stats = PipelineStats()
@@ -86,6 +87,7 @@ class PipelineRunner:
 
         jobs = self._scrape_safe()
         stats.scraped = len(jobs)
+        stats.scrape_notes = self._last_scrape_notes
 
         if not jobs:
             backlog = self._load_backlog_jobs()
@@ -93,6 +95,10 @@ class PipelineRunner:
                 logger.info("using_backlog_jobs", count=len(backlog))
                 jobs = backlog
                 stats.scraped = len(backlog)
+                if stats.scrape_notes:
+                    stats.scrape_notes += " | backlog"
+                else:
+                    stats.scrape_notes = "backlog"
 
         passed, rejected = engine.filter_jobs(jobs)
         stats.filtered = len(passed)
@@ -261,22 +267,41 @@ class PipelineRunner:
                 "scraped": stats.scraped,
                 "filtered": stats.filtered,
                 "applied": stats.applied,
-                "skipped": stats.skipped + stats.emailed,
+                "skipped": stats.skipped,
                 "failed": stats.failed,
+                "emailed": stats.emailed,
+                "notes": stats.scrape_notes[:1000],
             }
         )
         repo.commit()
 
     def _scrape_safe(self) -> list[JobListing]:
         """Scrape via multi-source stack; never abort the pipeline on scrape errors."""
+        scraper = MultiSourceScraper(self._settings, self._app_config)
         try:
-            return MultiSourceScraper(self._settings, self._app_config).scrape()
+            jobs = scraper.scrape()
+            notes = self._scrape_notes(scraper)
+            self._last_scrape_notes = notes
+            return jobs
         except ApifyUsageLimitError as exc:
             logger.error("scrape_aborted_apify_quota", error=str(exc))
+            self._last_scrape_notes = f"apify_quota: {exc}"
             return []
         except Exception as exc:
             logger.error("scrape_aborted", error=str(exc))
+            self._last_scrape_notes = f"scrape_error: {exc}"
             return []
+
+    @staticmethod
+    def _scrape_notes(scraper: MultiSourceScraper) -> str:
+        parts: list[str] = []
+        if scraper.last_sources_hit:
+            parts.append("hit=" + ",".join(scraper.last_sources_hit))
+        elif scraper.last_sources_tried:
+            parts.append("tried=" + ",".join(scraper.last_sources_tried) + " (empty)")
+        if scraper.last_errors:
+            parts.append("errors=" + "; ".join(scraper.last_errors[:3]))
+        return " | ".join(parts)
 
     def _load_backlog_jobs(self) -> list[JobListing]:
         session = self._session_factory()

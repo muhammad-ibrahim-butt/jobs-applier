@@ -153,7 +153,7 @@ def test_email() -> None:
 
 @app.command()
 def status() -> None:
-    """Show today's apply count and recent application history."""
+    """Show apply counts, backlog, last runs, and recent history."""
     settings = get_settings()
     configure_logging(settings.log_level)
     settings.ensure_directories()
@@ -164,11 +164,51 @@ def status() -> None:
         repo = JobRepository(session)
         today_count = repo.count_applications_today()
         remaining = max(0, settings.daily_apply_cap - today_count)
+        today_by_status = repo.counts_today_by_status()
+        backlog = repo.count_backlog()
+        jobs_total = repo.count_jobs()
+        last = repo.last_run()
 
         console.print(
-            f"\n[bold]Today's applications:[/bold] {today_count} / {settings.daily_apply_cap}"
+            f"\n[bold]Today's applied/dry-run:[/bold] {today_count} / {settings.daily_apply_cap}"
         )
-        console.print(f"[bold]Remaining cap:[/bold] {remaining}\n")
+        console.print(f"[bold]Remaining cap:[/bold] {remaining}")
+        if today_by_status:
+            bits = ", ".join(f"{k}={v}" for k, v in sorted(today_by_status.items()))
+            console.print(f"[bold]Today by status:[/bold] {bits}")
+        console.print(f"[bold]Jobs in DB:[/bold] {jobs_total}  |  [bold]Backlog:[/bold] {backlog}")
+
+        if last:
+            when = last.started_at.strftime("%Y-%m-%d %H:%M")
+            console.print(
+                f"\n[bold]Last run[/bold] ({when}): "
+                f"scraped={last.scraped} filtered={last.filtered} "
+                f"applied={last.applied} emailed={getattr(last, 'emailed', 0)} "
+                f"failed={last.failed} skipped={last.skipped}"
+            )
+            notes = (getattr(last, "notes", None) or "").strip()
+            if notes:
+                console.print(f"  scrape: {notes}")
+
+        runs = repo.recent_runs(5)
+        if runs:
+            run_table = Table(title="Recent Runs")
+            run_table.add_column("When")
+            run_table.add_column("Scraped", justify="right")
+            run_table.add_column("Applied", justify="right")
+            run_table.add_column("Emailed", justify="right")
+            run_table.add_column("Failed", justify="right")
+            run_table.add_column("Notes")
+            for run in runs:
+                run_table.add_row(
+                    run.started_at.strftime("%m-%d %H:%M"),
+                    str(run.scraped),
+                    str(run.applied),
+                    str(getattr(run, "emailed", 0) or 0),
+                    str(run.failed),
+                    (getattr(run, "notes", None) or "")[:60],
+                )
+            console.print(run_table)
 
         table = Table(title="Recent Applications")
         table.add_column("Job", style="cyan")
@@ -177,7 +217,7 @@ def status() -> None:
         table.add_column("Message")
         table.add_column("When")
 
-        for app_record in repo.recent_applications(15):
+        for app_record, job in repo.recent_applications_with_jobs(15):
             status_style = {
                 "applied": "green",
                 "failed": "red",
@@ -185,15 +225,33 @@ def status() -> None:
                 "dry_run": "blue",
                 "emailed": "magenta",
             }.get(app_record.status, "white")
+            if job is not None:
+                label = f"{job.title[:36]} @ {job.company[:18]}"
+            else:
+                label = app_record.job_fingerprint[:40]
             table.add_row(
-                app_record.job_fingerprint[:40],
+                label,
                 f"[{status_style}]{app_record.status}[/{status_style}]",
                 app_record.apply_target,
-                app_record.message[:50],
+                (app_record.message or "")[:50],
                 app_record.applied_at.strftime("%Y-%m-%d %H:%M"),
             )
 
         console.print(table)
+
+        failures = repo.recent_failures(5)
+        if failures:
+            fail_table = Table(title="Recent Failures")
+            fail_table.add_column("Fingerprint", style="red")
+            fail_table.add_column("Message")
+            fail_table.add_column("When")
+            for fail in failures:
+                fail_table.add_row(
+                    fail.job_fingerprint[:36],
+                    (fail.message or "")[:60],
+                    fail.applied_at.strftime("%Y-%m-%d %H:%M"),
+                )
+            console.print(fail_table)
     finally:
         session.close()
 
@@ -208,5 +266,7 @@ def _print_stats(stats: PipelineStats) -> None:
     console.print(f"  Skipped:  {stats.skipped}")
     if stats.dry_run:
         console.print(f"  Dry run:  {stats.dry_run}")
+    if stats.scrape_notes:
+        console.print(f"  Sources:  {stats.scrape_notes}")
     if stats.cap_reached:
         console.print("[yellow]  Daily apply cap reached[/yellow]")

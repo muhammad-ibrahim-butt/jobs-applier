@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -109,6 +110,41 @@ class JobRepository:
             .limit(limit)
             .all()
         )
+
+    def count_jobs(self) -> int:
+        return self._session.query(JobRecord).count()
+
+    def count_backlog(self) -> int:
+        return len(self.unapplied_jobs(limit=500))
+
+    def counts_today_by_status(self) -> dict[str, int]:
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        rows = (
+            self._session.query(ApplicationRecord.status)
+            .filter(ApplicationRecord.applied_at >= today_start)
+            .all()
+        )
+        return dict(Counter(status for (status,) in rows))
+
+    def recent_applications_with_jobs(
+        self, limit: int = 15
+    ) -> list[tuple[ApplicationRecord, JobRecord | None]]:
+        return (
+            self._session.query(ApplicationRecord, JobRecord)
+            .outerjoin(JobRecord, JobRecord.fingerprint == ApplicationRecord.job_fingerprint)
+            .order_by(ApplicationRecord.applied_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def recent_runs(self, limit: int = 5) -> list[RunRecord]:
+        return (
+            self._session.query(RunRecord).order_by(RunRecord.started_at.desc()).limit(limit).all()
+        )
+
+    def last_run(self) -> RunRecord | None:
+        return self._session.query(RunRecord).order_by(RunRecord.started_at.desc()).first()
+
 
     def unapplied_jobs(self, limit: int = 40) -> list[JobListing]:
         """Jobs saved earlier that never reached applied/emailed/dry_run."""
