@@ -145,7 +145,6 @@ class JobRepository:
     def last_run(self) -> RunRecord | None:
         return self._session.query(RunRecord).order_by(RunRecord.started_at.desc()).first()
 
-
     def unapplied_jobs(self, limit: int = 40) -> list[JobListing]:
         """Jobs saved earlier that never reached applied/emailed/dry_run."""
         applied_fps = {
