@@ -131,7 +131,14 @@ class LinkedInEasyApplyAdapter:
                     page = None
                     from jobs_applier.apply.router import ApplyRouter
 
-                    return ApplyRouter().apply(
+                    adapter = ApplyRouter().get_adapter(redirected)
+                    if adapter is None:
+                        return self._result(
+                            job,
+                            ApplicationStatus.SKIPPED,
+                            "Easy Apply not available; no supported ATS redirect",
+                        )
+                    return adapter.apply(
                         redirected, context, profile, qa_cache, settings, dry_run=dry_run
                     )
 

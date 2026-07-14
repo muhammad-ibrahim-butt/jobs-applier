@@ -129,13 +129,17 @@ class JobRepository:
     def recent_applications_with_jobs(
         self, limit: int = 15
     ) -> list[tuple[ApplicationRecord, JobRecord | None]]:
-        return (
+        rows = (
             self._session.query(ApplicationRecord, JobRecord)
             .outerjoin(JobRecord, JobRecord.fingerprint == ApplicationRecord.job_fingerprint)
             .order_by(ApplicationRecord.applied_at.desc())
             .limit(limit)
             .all()
         )
+        out: list[tuple[ApplicationRecord, JobRecord | None]] = []
+        for app, job in rows:
+            out.append((app, job))
+        return out
 
     def recent_runs(self, limit: int = 5) -> list[RunRecord]:
         return (
